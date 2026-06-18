@@ -1,0 +1,37 @@
+{
+  "name": "kibitz",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Serverless peer-to-peer video calls for any static website — battle-tested WebRTC mesh extracted from a production card-game app",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build && vite build -c vite.widget.config.ts && cp dist-widget/widget.js dist/widget.js && vite build -c vite.prerender.config.ts && node scripts/prerender.mjs && node scripts/render-docs.mjs && node scripts/gen-llms.mjs",
+    "preview": "vite preview",
+    "mirror": "npm run build && npx -y wrangler pages dev dist --port 8788 --kv OTP_KV",
+    "prerelease": "bash scripts/prerelease-local.sh",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "roster-link": "node scripts/roster-link.mjs",
+    "voice-agent": "node tools/voice-agent/agent.mjs"
+  },
+  "dependencies": {
+    "jsqr": "^1.4.0",
+    "peerjs": "^1.5.5",
+    "qrcode-generator": "^1.5.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "marked": "^18.0.5",
+    "playwright": "^1.60.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^3.0.0"
+  }
+}

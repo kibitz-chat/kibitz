@@ -1,0 +1,12 @@
+# Cloudflare Pages response headers.
+#
+# /widget.js is the embed entry point: third-party pages hardcode <script src=".../widget.js">, so it
+# CAN'T be content-hashed like the app's chunks. Pages' default for static assets is
+# `public, max-age=14400, must-revalidate` (4h) — which pins embedders (and our own demo) to a stale
+# widget for up to 4 hours after every deploy. `no-cache` keeps the browser copy but forces a revalidate
+# on each load: a cheap 304 (via ETag) when unchanged, and the fresh bundle the moment a deploy changes
+# it. min-version.json is the kill-switch manifest and must be fresh for the same reason.
+/widget.js
+  Cache-Control: no-cache
+/min-version.json
+  Cache-Control: no-cache

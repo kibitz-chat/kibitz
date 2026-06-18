@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Security &amp; how calls work — Kibitz</title>
+    <meta name="description" content="Kibitz's call architecture: direct peer-to-peer media encrypted end-to-end (DTLS-SRTP); a TURN relay that can't decrypt (metadata only); and signaling that introduces the browsers and carries key fingerprints — compare the safety code to rule out a man-in-the-middle." />
+    <meta name="theme-color" content="#faf6ef" />
+    <style>
+      :root { color-scheme: light }
+      body { margin: 0; background: #faf6ef; color: #2a342f;
+        font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif }
+      .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 64px }
+      a { color: #1f6f4f }
+      .brand { color: #0b3d2e; font-weight: 700; text-decoration: none; font-size: 1.3rem }
+      h1 { font-size: 1.7rem; color: #0b3d2e; margin: 18px 0 6px }
+      .lead { font-size: 1.05rem }
+      h2 { font-size: 1.12rem; color: #0b3d2e; margin: 26px 0 8px }
+      p, li { line-height: 1.6 }
+      ul { padding-left: 20px } li { margin: 6px 0 }
+      figure { margin: 22px 0; text-align: center }
+      figcaption { color: #5a655f; font-size: .85rem; margin-top: 8px }
+      .good { color: #1a7f4e; font-weight: 600 }
+      nav { margin-top: 40px; padding-top: 16px; border-top: 1px solid rgba(11,61,46,.15);
+        display: flex; gap: 18px; font-size: .9rem; flex-wrap: wrap }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="brand" href="/">Kibitz</a>
+      <h1>Security &amp; how calls work</h1>
+      <p class="lead">
+        Kibitz is peer-to-peer. Your audio and video travel <strong>directly between the browsers in the call</strong>,
+        encrypted end-to-end — there is no media server that can decode, mix, or record them. Here's the whole path.
+      </p>
+
+      <figure>
+        <svg viewBox="0 0 720 380" width="100%" role="img" aria-labelledby="dt dd" style="max-width:720px;height:auto">
+          <title id="dt">How a Kibitz call connects</title>
+          <desc id="dd">
+            Audio and video flow directly between the two browsers, encrypted end to end. A signaling server only
+            introduces the browsers and never sees the call. A TURN relay carries the still-encrypted media only when a
+            direct connection is impossible, and it cannot decrypt it.
+          </desc>
+          <defs>
+            <marker id="ah" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L7,3 L0,6 Z" fill="#1a7f4e" />
+            </marker>
+          </defs>
+
+          <rect x="262" y="18" width="196" height="56" rx="9" fill="#fff" stroke="#9aa39e" stroke-width="2" stroke-dasharray="5 4" />
+          <text x="360" y="40" text-anchor="middle" font-weight="600" fill="#0b3d2e" font-size="14">Signaling server</text>
+          <text x="360" y="60" text-anchor="middle" fill="#5a655f" font-size="10.5">setup only — never sees your call</text>
+
+          <line x1="285" y1="74" x2="160" y2="150" stroke="#bcc4be" stroke-width="1.5" stroke-dasharray="4 4" />
+          <line x1="435" y1="74" x2="560" y2="150" stroke="#bcc4be" stroke-width="1.5" stroke-dasharray="4 4" />
+
+          <rect x="70" y="150" width="170" height="84" rx="11" fill="#fff" stroke="#0b3d2e" stroke-width="2" />
+          <text x="155" y="187" text-anchor="middle" font-weight="600" fill="#0b3d2e" font-size="15">Your browser</text>
+          <text x="155" y="207" text-anchor="middle" fill="#5a655f" font-size="11.5">camera · mic · keys</text>
+
+          <rect x="480" y="150" width="170" height="84" rx="11" fill="#fff" stroke="#0b3d2e" stroke-width="2" />
+          <text x="565" y="187" text-anchor="middle" font-weight="600" fill="#0b3d2e" font-size="15">Their browser</text>
+          <text x="565" y="207" text-anchor="middle" fill="#5a655f" font-size="11.5">camera · mic · keys</text>
+
+          <line x1="240" y1="192" x2="480" y2="192" stroke="#1a7f4e" stroke-width="4" marker-start="url(#ah)" marker-end="url(#ah)" />
+          <rect x="262" y="180" width="196" height="24" rx="6" fill="#faf6ef" />
+          <text x="360" y="196" text-anchor="middle" font-weight="600" fill="#1a7f4e" font-size="12.5">encrypted media · end-to-end</text>
+
+          <rect x="262" y="306" width="196" height="56" rx="9" fill="#fff" stroke="#9aa39e" stroke-width="2" stroke-dasharray="5 4" />
+          <text x="360" y="328" text-anchor="middle" font-weight="600" fill="#0b3d2e" font-size="14">TURN relay</text>
+          <text x="360" y="348" text-anchor="middle" fill="#5a655f" font-size="10.5">only if direct fails — can't decrypt</text>
+
+          <line x1="285" y1="306" x2="160" y2="234" stroke="#bcc4be" stroke-width="1.5" stroke-dasharray="4 4" />
+          <line x1="435" y1="306" x2="560" y2="234" stroke="#bcc4be" stroke-width="1.5" stroke-dasharray="4 4" />
+        </svg>
+        <figcaption>Media goes browser-to-browser, end-to-end encrypted. The servers either just introduce the browsers, or (rarely) forward packets they can't read.</figcaption>
+      </figure>
+
+      <h2>1. Media — direct &amp; end-to-end encrypted</h2>
+      <p>
+        Calls use WebRTC. Audio and video are encrypted with <strong>DTLS-SRTP</strong>, and the keys are negotiated
+        <span class="good"> directly between the two browsers</span> — they never leave your devices. So no relay or
+        server in the path can see or hear the call, and there is <strong>no SFU or media server</strong> that decodes,
+        mixes, or records anything. The one assumption is that those keys are <em>verified</em> honestly — which happens
+        in the signaling step below, and which you can check yourself with the safety code (§4).
+      </p>
+
+      <h2>2. Signaling — introductions only</h2>
+      <p>
+        Two browsers can't find each other unaided, so a signaling server briefly exchanges the setup data needed to
+        connect: a temporary peer ID, the room name from your link, and network "ICE candidates" (which include IP
+        addresses). It sees <strong>connection metadata, never call content</strong>, and stores none of it.
+      </p>
+      <p>
+        Signaling is also where the two browsers <em>verify</em> each other's encryption keys — each publishes a
+        certificate fingerprint here. We relay those honestly and keep nothing; but because verification rides this
+        channel, a <strong>compromised or compelled signaling server is the one party that could attempt to slip into
+        the middle</strong> of a future call (a relay can't — it only ever sees ciphertext). That's exactly what the
+        safety code is for.
+      </p>
+
+      <h2>3. The relay (TURN) — only when a direct link is impossible</h2>
+      <p>
+        Some networks (symmetric NAT, strict firewalls) won't allow a direct connection. For those, an encrypted TURN
+        relay forwards the media so the call still works. Crucially, it forwards the <strong>already-encrypted</strong>
+        packets and <span class="good">cannot decrypt them</span> — it only ever sees ciphertext, IP addresses, and
+        traffic volume. Most calls never need it.
+      </p>
+
+      <h2>4. Verify it yourself — the safety code</h2>
+      <p>
+        Every WebRTC "end-to-end" claim ultimately trusts the signaling channel to deliver the right keys. To remove
+        that trust entirely, compare a <strong>safety code</strong>: Kibitz derives a short emoji code from the two
+        browsers' <em>actual</em> certificates — the ones really used on the wire, not the ones named in signaling. If
+        both of you see the <strong>same code</strong>, no one is in the middle; if they differ, someone is. Same idea
+        as Signal's safety numbers.
+      </p>
+      <p>
+        This is <strong>live in the call UI</strong>: tap the <strong>shield</strong> button in the panel header to
+        open <em>Verify</em>. It shows one emoji code per person — read it aloud, and if it matches on both screens,
+        mark it verified. The code is computed per-pair from the live DTLS certificates, never from anything the
+        signaling server could forge. If someone reconnects with different key material mid-call, the shield turns
+        amber and that person's row warns you to re-check &mdash; so a swapped certificate can't quietly inherit an
+        old "verified" badge.
+      </p>
+
+      <h2>What this protects — and what it doesn't</h2>
+      <ul>
+        <li><strong>Everything travels peer-to-peer.</strong> Audio and video go directly between browsers (DTLS-SRTP), and chat, shared links, and co-browse now do too &mdash; over direct, DTLS-encrypted data connections between each pair of participants. <strong>No participant relays anyone else's content.</strong> (Earlier the data channel was relayed by the room's first participant; that's no longer the case.) The emoji safety code verifies the media connection specifically; per-data-channel verification is a planned follow-up. Presence &mdash; who's in the room, the lobby, lock &mdash; is still coordinated by that first participant, but carries no message content.</li>
+        <li><strong>Protected:</strong> the content of your call, from the network and from us. We can't record it because the media never reaches us in a readable form.</li>
+        <li><strong>Not hidden:</strong> that a call happened, and — in a direct connection — participants' IP addresses are visible to each other (inherent to WebRTC; the relay masks this when used).</li>
+        <li><strong>Open by link:</strong> a room is a link, so anyone who has the link can join. Share it like a key. Rooms vanish when everyone leaves.</li>
+      </ul>
+
+      <h2>Can we be made to wiretap you?</h2>
+      <p>
+        <strong>Not a call that's already happening.</strong> Its keys are ephemeral, per-call, and held only by the
+        two browsers &mdash; there's nothing for us to produce and no kill-switch to pull. The one theoretical avenue
+        is the signaling channel for <em>future</em> calls (swapping a key during setup) &mdash; and that is precisely
+        what the <strong>safety code (§4)</strong> is designed to catch. <em>(We can be made to take the website down
+        &mdash; but not to silently reach into your calls.)</em>
+      </p>
+
+      <h2>Run your own copy</h2>
+      <p>
+        You don't have to depend on kibitz.chat. The <strong>full source is open (Apache-2.0)</strong> &mdash; read it,
+        audit the encryption yourself, build it, and host a copy on any static host or content-addressed on
+        <a href="https://ipfs.tech/" target="_blank" rel="noopener noreferrer">IPFS</a>, so a copy can outlive this
+        site.
+        <a href="https://github.com/kibitz-chat/kibitz" target="_blank" rel="noopener noreferrer">Read the source &rarr;</a>
+      </p>
+
+      <h2>Reporting a security issue</h2>
+      <p>
+        Found a vulnerability? Please report it privately to
+        <a href="mailto:security@kibitz.chat">security@kibitz.chat</a> rather than disclosing it publicly, and give us
+        a reasonable chance to fix it. Thank you.
+      </p>
+
+      <nav>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/security">Security</a>
+        <a href="/transparency">Transparency</a>
+        <a href="/docs">Engine</a>
+        <a href="/relay">Offline mode</a>
+        <a href="/">← Back to Kibitz</a>
+      </nav>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "description": "Tuesday standup",
+  "access": "verified",
+  "clientId": "1234567890-example.apps.googleusercontent.com",
+  "invitees": [
+    { "name": "You", "method": "signin", "email": "you@acme.com" },
+    { "name": "Anyone at Acme", "method": "oidc", "domain": "acme.com" },
+    { "name": "Bob", "method": "signin", "email": "bob@acme.com", "show": true }
+  ]
+}

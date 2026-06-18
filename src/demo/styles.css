@@ -1,0 +1,2157 @@
+:root {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --panel: #161b22;
+  --edge: rgba(255, 255, 255, 0.12);
+  --text: #e6edf3;
+  --dim: #8b949e;
+  --good: var(--brand-accent, #3fb950);
+  --bad: #f85149;
+}
+* {
+  box-sizing: border-box;
+}
+/* No pull-to-refresh / rubber-band reload: a downward drag while in a call would
+   otherwise reload the page on Safari/Chrome and drop you out of the call. */
+html,
+body {
+  overscroll-behavior: none;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, sans-serif;
+}
+/* Room page = a plain BLACK backdrop behind the full-window call widget (visible only when the call
+   pops out to PiP, or for a frame at a resize margin). No white "paper" that flashes on resize. */
+body.roomdark {
+  background: #000;
+  color: #8b949e;
+}
+.roompage-empty {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: transparent; /* PRE-JOIN: let the body's warm paper show through the transparent panel */
+}
+body.roomdark .roompage-empty {
+  background: #000; /* IN-CALL: black backdrop (resize margin / pop-out) */
+}
+.roompage-empty .fine-build {
+  margin: 0 0 10px;
+}
+main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+h1 {
+  font-size: 1.3rem;
+  margin: 0;
+}
+.room {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+button:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Paper theme — landing AND lobby are warm/light; only the live call is dark. */
+body.paper {
+  background: #faf6ef;
+  color: #20262b;
+  /* The warm palette, available to ANY page under a paper body (create / preview / room). */
+  --pbg: #faf6ef;
+  --pcard: #ffffff;
+  --pedge: rgba(30, 40, 35, 0.12);
+  --ptext: #20262b;
+  --pdim: #5c6670;
+  --pfelt: var(--brand-accent, #1a7f4e); /* a build's accent (VITE_BRAND_ACCENT) recolours every paper CTA */
+}
+/* Default look for any paper-page button that doesn't style itself: a clean white card with a
+   real border. Wrapped in :where() so it carries ZERO specificity — a true fallback. Previously
+   this was `body.paper button` (0,1,2), which actually BEAT single-class styles like .cp-go /
+   .cg-chip / .cp-iobtn and whited them out (and it set only border-COLOR, no width, so the
+   border never rendered — borderless white blobs). Now every button's own style wins, and only
+   a genuinely unstyled button lands on this default. */
+:where(body.paper button) {
+  background: #fff;
+  border: 1px solid rgba(30, 40, 35, 0.15);
+  border-radius: 10px;
+  color: #20262b;
+}
+:where(body.paper button:hover) {
+  border-color: rgba(30, 40, 35, 0.4);
+}
+body.paper .room {
+  color: #5c6670;
+}
+body.paper .lobby input {
+  background: #fff;
+  border-color: rgba(30, 40, 35, 0.15);
+  color: #20262b;
+}
+body.paper .lobby .join,
+body.paper .start {
+  background: var(--pfelt); /* via the var so a build's accent (VITE_BRAND_ACCENT) can recolour it */
+  color: #fff;
+  border: 0;
+}
+body.paper .hint {
+  color: #5c6670;
+}
+body.paper .brand {
+  color: #20262b;
+}
+body.paper .lobby label {
+  color: #5c6670;
+}
+
+/* Landing — warm and light (card-table paper + felt green); calls stay dark. */
+.landing,
+.launcher,
+.installpage {
+  --pbg: #faf6ef;
+  --pcard: #ffffff;
+  --pedge: rgba(30, 40, 35, 0.12);
+  --ptext: #20262b;
+  --pdim: #5c6670;
+  --pfelt: var(--brand-accent, #1a7f4e); /* a build's accent (VITE_BRAND_ACCENT) recolours every paper CTA */
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  max-width: none;
+  overflow-x: hidden;
+  background: var(--pbg);
+  color: var(--ptext);
+  text-align: center;
+  padding: 0 16px 24px;
+}
+.landing > *,
+.launcher > *,
+.installpage > * {
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* The marketing "Install Kibitz" CTA — a secondary action under "Start a room"
+   (the paste-link moves to the installed launcher). */
+.install-cta {
+  margin: 0;
+  display: inline-block;
+  background: var(--pcard);
+  color: var(--pfelt);
+  border: 1.5px solid var(--pfelt);
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 10px 22px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.install-cta:hover {
+  background: color-mix(in srgb, var(--brand-accent, #1a7f4e) 8%, transparent);
+}
+
+/* Installed-app launcher: the sparse home leans the hero a little lower; "or" divider. */
+.launcher .hero {
+  margin-top: 15vh;
+}
+.launcher-or {
+  margin: 22px auto 12px;
+  color: var(--pdim);
+  font-size: 0.95rem;
+}
+
+/* A centered row that sits the primary entry action (Install / Paste-link / Open-a-room) next
+   to the ⚙️ Settings pill — each button fits its own text. Wraps on narrow screens. */
+.entry-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin: 12px auto;
+}
+
+/* ⚙️ Settings — a labeled pill that lives in .entry-row beside the entry action (a corner gear
+   went unnoticed). Its drop-down panel (the per-browser "hide my IP" toggle) floats just below,
+   centered on the pill, so it doesn't disturb the row. Shown on both the landing and launcher. */
+.settings {
+  position: relative;
+  margin: 0;
+  text-align: center;
+}
+/* Same button family as Install / Paste (matching shape, radius and size) but neutral-gray
+   instead of green — it's a quieter, secondary control, so the hierarchy still reads. */
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 22px;
+  border-radius: 12px;
+  border: 1.5px solid var(--pedge);
+  background: var(--pcard);
+  color: var(--pdim);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.settings-btn:hover {
+  background: color-mix(in srgb, var(--brand-accent, #1a7f4e) 6%, transparent);
+  color: var(--ptext);
+}
+.settings-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: min(360px, calc(100vw - 28px));
+  text-align: left;
+  background: var(--pcard);
+  border: 1px solid var(--pedge);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(30, 40, 35, 0.18);
+  padding: 14px 16px 16px;
+}
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: 10px;
+}
+/* Click-outside-to-close: a full-viewport layer UNDER the panel (z-index 20). Closes on tap, so the
+   panel is always dismissible even if the small ✕ tap is fiddly (iOS landscape fixed-element taps). */
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  background: transparent;
+}
+.settings-x {
+  background: none;
+  border: none;
+  color: var(--pdim);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  /* A generous tap target so an offset touch still lands on the ✕ (was 4px — too small for touch). */
+  padding: 8px;
+  margin: -4px -6px -4px 0;
+  min-width: 40px;
+  min-height: 40px;
+}
+.settings-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  cursor: pointer;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--ptext);
+}
+.settings-row input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+.settings-txt em {
+  font-style: normal;
+  font-weight: 400;
+  font-size: 0.82em;
+  opacity: 0.6;
+}
+.settings-fine {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--pdim);
+}
+.settings-build {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line, rgba(0, 0, 0, 0.1));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  color: var(--pdim);
+  user-select: text; /* selectable so you can copy/quote the build */
+  -webkit-user-select: text;
+}
+/* Narrow screens (portrait mobile) AND short landscape: the panel is anchored to a button that can sit
+   off-centre / low on the screen, so a 360px dropdown runs off the edge or below the fold (needing a
+   scroll to see the box). Make it a viewport-centred sheet that's fully visible, instead of a
+   button-anchored dropdown. (Landscape phones are wider than 480px, so they need the explicit case.) */
+@media (max-width: 480px), (orientation: landscape) and (max-height: 560px) {
+  .settings-panel {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    right: auto;
+    transform: translate(-50%, -50%);
+    width: min(360px, calc(100vw - 24px));
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+  }
+  /* As a centered sheet, dim the backdrop so it reads as a modal (and the tap-to-close is discoverable). */
+  .settings-backdrop {
+    background: rgba(20, 24, 28, 0.35);
+  }
+}
+
+/* Install page: instructions + the native prompt button. */
+.installpage .back-link {
+  display: inline-block;
+  margin: 16px 0 0;
+  padding: 6px 10px;
+  background: none;
+  border: 0;
+  color: var(--pdim);
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.installpage h1 {
+  font-size: 2.4rem;
+  margin: 18px 0 0;
+}
+.installpage .sub {
+  margin-top: 12px;
+}
+.install-native {
+  margin: 8px 0 28px;
+}
+.install-steps {
+  text-align: left;
+  max-width: 460px;
+  margin: 18px auto 0;
+  background: var(--pcard);
+  border: 1px solid var(--pedge);
+  border-radius: 14px;
+  padding: 16px 22px;
+}
+.install-steps h2 {
+  font-size: 1.05rem;
+  margin: 0 0 8px;
+}
+.install-steps ol {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ptext);
+  line-height: 1.7;
+}
+.install-steps p {
+  margin: 0;
+  color: var(--pdim);
+}
+/* iOS / Mac Safari: a manual "I've added it" confirm under the steps — those browsers fire no
+   install event, so this is how the home page learns it's installed. */
+/* Scoped under .installpage so it outranks `body.paper button` (which would otherwise strip the
+   green fill and make these read as flat text instead of a button). */
+.installpage .install-added {
+  display: block;
+  width: 100%;
+  margin: 16px 0 0;
+  background: var(--pfelt);
+  color: #fff;
+  border: 0;
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 12px 18px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.installpage .install-added:hover {
+  filter: brightness(1.08);
+}
+/* Small "Remove Kibitz" link on the installed home page — the mirror of the Install CTA. */
+.install-uninstall {
+  display: block;
+  margin: 14px auto 0;
+  font-size: 0.85rem;
+  color: var(--pdim);
+}
+.install-uninstall:hover {
+  color: var(--pfelt);
+}
+
+/* Help / support page (#help): a copyable "ask any AI about Kibitz" prompt. Reuses the .installpage
+   paper chrome (back-link, h1, sub, fine). Left-aligned single-column layout — see the .helppage
+   block at the end of this section. */
+.helppage h2 {
+  font-size: 1.15rem;
+  margin: 28px 0 6px;
+}
+.help-actions {
+  margin: 22px auto 6px;
+  max-width: 560px;
+}
+/* Scoped under .installpage so the green fill survives `body.paper button` (which strips fills). */
+.installpage .help-copy {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 14px 18px;
+  font-size: 1.05rem;
+}
+.installpage .help-copy:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.help-warn {
+  margin-top: 10px;
+  color: #9a6a00;
+}
+.help-open {
+  margin-top: 8px;
+}
+.help-assistants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin: 6px 0 4px;
+}
+.help-assistant {
+  display: inline-block;
+  background: var(--pcard);
+  color: var(--pfelt);
+  border: 1.5px solid var(--pfelt);
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 10px;
+  text-decoration: none;
+}
+.help-assistant:hover {
+  background: color-mix(in srgb, var(--brand-accent, #1a7f4e) 8%, transparent);
+}
+.help-preview {
+  max-width: 640px;
+  margin: 22px auto 0;
+  text-align: left;
+}
+.help-preview > summary {
+  cursor: pointer;
+  color: var(--pdim);
+  font-size: 0.95rem;
+  text-align: center;
+  list-style-position: inside;
+}
+.help-text {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--pedge);
+  border-radius: 12px;
+  background: var(--pcard);
+  color: var(--ptext);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.help-self {
+  margin-top: 22px;
+}
+/* The help page reads as a clean, left-aligned document (like the manual / legal pages), NOT
+   ragged centred text. .installpage centres each block independently at differing widths (h1 760,
+   .sub 540, actions 560…), so the moment text goes left-aligned the blocks no longer share a left
+   edge. Pin every direct child to ONE centred column → a single shared left edge for the heading,
+   prose, prompt, and the copy/assistant actions. */
+.helppage {
+  text-align: left;
+}
+.installpage.helppage > * {
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.installpage.helppage .help-copy {
+  max-width: none; /* fill the column so the button's left edge lines up with the text */
+}
+.helppage .help-assistants {
+  justify-content: flex-start;
+}
+.helppage .help-preview > summary {
+  text-align: left;
+}
+
+.linklike {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--pfelt);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.hero {
+  margin-top: 12vh;
+}
+.hero h1 {
+  font-size: 3.2rem;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.tagline {
+  font-size: 1.35rem;
+  margin: 10px 0 6px;
+}
+/* Each sentence is its own line — the break is always between sentences, so
+   "…anywhere on the web." stays whole. balance evens the rag if a sentence
+   wraps on a narrow phone; nothing overflows. */
+.tagline span {
+  display: block;
+  text-wrap: balance;
+}
+.sub {
+  color: var(--pdim);
+  max-width: 540px;
+  margin: 0 auto 26px;
+  /* Avoid a single-word last line on the centered paragraph. */
+  text-wrap: pretty;
+}
+.start {
+  background: var(--pfelt);
+  color: #fff;
+  border: 0;
+  font-weight: 800;
+  font-size: 1.15rem;
+  padding: 14px 34px;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--brand-accent, #1a7f4e) 25%, transparent);
+}
+.start:hover {
+  filter: brightness(1.08);
+}
+/* Secondary home CTA (a rebrand's extra button beside "Start a room"). Outlined, accent-coloured;
+   it's an <a>, so re-center the label and drop the primary's fill/shadow. */
+a.start.start-secondary {
+  background: transparent;
+  color: var(--pfelt);
+  border: 2px solid var(--pfelt);
+  padding: 12px 32px; /* 2px less than .start to offset the border → matching height */
+  box-shadow: none;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+a.start.start-secondary:hover {
+  background: color-mix(in srgb, var(--pfelt) 10%, transparent);
+  filter: none;
+}
+
+/* Short LANDSCAPE compaction lives at the END of this file (search "LANDSCAPE compaction") — it MUST
+   come after the base .createpage / .cp-* / .open-* / hero rules, or those later rules win on equal
+   specificity (CSS source order) and the compaction silently does nothing. */
+.start-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+.start-name {
+  font-size: 1.05rem;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--pedge);
+  background: var(--pcard);
+  color: var(--ptext);
+  min-width: 0;
+  width: 280px;
+  max-width: 100%;
+}
+.start-name::placeholder {
+  color: var(--pdim);
+}
+.start-name:focus {
+  outline: none;
+  border-color: var(--pfelt);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-accent, #1a7f4e) 18%, transparent);
+}
+
+/* "Have a link? Open a room" — the JOIN-by-paste entry under "Start a room", for an
+   installed PWA with no address bar (esp. iOS, where a tapped link can't open the app). */
+.open-toggle {
+  /* No auto side-margins: this lives in .entry-row (a flex row), where `margin:auto` would eat
+     the free space and shove the ⚙️ Settings pill to the far edge. The row handles spacing. */
+  margin: 0;
+  background: none;
+  border: 0;
+  color: var(--pfelt);
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.open-toggle:hover {
+  text-decoration: underline;
+}
+.open-form {
+  margin: 12px auto 0;
+  max-width: 100%;
+}
+.open-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+.open-input {
+  font-size: 1rem;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--pedge);
+  background: var(--pcard);
+  color: var(--ptext);
+  min-width: 0;
+  width: 280px;
+  max-width: 100%;
+}
+.open-input::placeholder {
+  color: var(--pdim);
+}
+.open-input:focus {
+  outline: none;
+  border-color: var(--pfelt);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-accent, #1a7f4e) 18%, transparent);
+}
+.open-paste {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  background: var(--pfelt);
+  color: #fff;
+  border: 0;
+  font-weight: 800;
+  font-size: 1.02rem;
+  padding: 13px 24px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.open-paste:hover {
+  filter: brightness(1.08);
+}
+.open-go {
+  background: var(--pfelt);
+  color: #fff;
+  border: 0;
+  font-weight: 800;
+  font-size: 1rem;
+  padding: 12px 24px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.open-go:hover {
+  filter: brightness(1.08);
+}
+.open-err {
+  margin: 8px auto 0;
+  color: #c0392b;
+  font-size: 0.88rem;
+  text-align: center;
+}
+.open-scan {
+  margin: 10px auto 0;
+  display: block;
+  background: none;
+  border: 0;
+  color: var(--pfelt);
+  font-weight: 700;
+  font-size: 0.92rem;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.open-scan:hover {
+  text-decoration: underline;
+}
+.qrscan {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.qrscan-video {
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 14px;
+  background: #000;
+  border: 1px solid var(--pedge);
+}
+/* The "Set up your room" page (CreatePage) — shown after "Start a room". DOCUMENT-FLOW (block, not
+   flex): a flex container with min-height:100dvh keeps the iOS portrait→landscape tap-offset (the
+   card's hit-map desyncs after a rotation). Same block-scroll fix as .landing/.launcher/.installpage —
+   the card centers with margin:auto. */
+.createpage {
+  width: 100%;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  padding: 40px 16px;
+  box-sizing: border-box;
+}
+.cp-card {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto; /* center horizontally (was the flex justify-content) */
+  text-align: left;
+  padding: 30px 30px 34px;
+  border: 1px solid var(--pedge);
+  border-radius: 18px;
+  background: var(--pcard);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+}
+.cp-back {
+  font: inherit;
+  font-size: 1.05rem;
+  background: none;
+  border: none;
+  color: var(--pdim);
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 12px;
+}
+.cp-back:hover {
+  color: var(--pfelt);
+}
+.cp-h {
+  margin: 0 0 22px;
+  font-size: 2.4rem;
+  letter-spacing: -0.01em;
+}
+.cp-label {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.cp-label span {
+  font-weight: 400;
+  color: var(--pdim);
+}
+.cp-name {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 1.25rem;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--pedge);
+  background: var(--pcard);
+  color: var(--ptext);
+  margin-bottom: 26px;
+}
+.cp-name:focus {
+  outline: none;
+  border-color: var(--pfelt);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-accent, #1a7f4e) 18%, transparent);
+}
+.cp-q {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.cp-go {
+  margin-top: 20px;
+  width: 100%;
+  font: inherit;
+  font-size: 1.3rem;
+  font-weight: 600;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: none;
+  background: var(--pfelt);
+  color: #fff;
+  cursor: pointer;
+}
+.cp-go:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+/* Premium relay (opener-pays) — a framed license-key row in the create flow. */
+/* Advanced section toggle: tucks the wall of options (who-can-join, roster, AI agents, premium,
+   config import/export) away so the default page is just a description + Create. */
+.cp-adv-h {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 22px;
+  padding: 12px 14px;
+  border: 1px solid var(--pedge);
+  border-radius: 12px;
+  background: var(--pcard);
+  font: inherit;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--ptext);
+  cursor: pointer;
+  text-align: left;
+}
+.cp-adv-h em {
+  font-style: normal;
+  font-weight: 400;
+  font-size: 0.8em;
+  opacity: 0.6;
+}
+.cp-adv-body {
+  margin-top: 6px;
+}
+
+/* Privacy toggle inside Advanced: route my media/data through the relay (hide my IP). */
+.cp-relay {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 22px;
+  cursor: pointer;
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--ptext);
+}
+.cp-relay input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+.cp-relay-txt em {
+  font-style: normal;
+  font-weight: 400;
+  font-size: 0.82em;
+  opacity: 0.6;
+}
+
+.cp-prem {
+  margin-top: 26px;
+  padding: 16px;
+  border: 1px solid var(--pedge);
+  border-radius: 14px;
+  background: var(--pcard);
+}
+.cp-prem-h {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ptext);
+  cursor: pointer;
+  text-align: left;
+}
+.cp-prem-h em {
+  font-style: normal;
+  font-weight: 400;
+  font-size: 0.82em;
+  opacity: 0.6;
+}
+.cp-prem-caret {
+  font-size: 0.85em;
+  opacity: 0.55;
+}
+.cp-prem-body {
+  margin-top: 12px;
+}
+.cp-prem-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.cp-prem-row .cp-name {
+  margin-bottom: 0;
+  font-size: 1rem;
+  padding: 10px 12px;
+}
+.cp-prem-save {
+  flex: 0 0 auto;
+  font: inherit;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: none;
+  background: var(--pfelt);
+  color: #fff;
+  cursor: pointer;
+}
+.cp-prem-ok {
+  margin: 10px 0 0;
+  font-size: 0.9rem;
+  color: var(--pfelt);
+  font-weight: 600;
+}
+.rp-desc {
+  margin: 0 0 12px;
+  font-size: 1.35rem;
+  font-style: italic;
+  color: var(--ptext);
+}
+.cp-io {
+  display: flex;
+  gap: 8px;
+  margin: -8px 0 22px;
+}
+.cp-iobtn {
+  font: inherit;
+  font-size: 0.92rem;
+  background: none;
+  border: 1px dashed var(--pedge);
+  border-radius: 9px;
+  padding: 8px 14px;
+  color: var(--pfelt);
+  cursor: pointer;
+}
+.cp-iobtn:hover {
+  border-color: var(--pfelt);
+}
+.cp-signapp {
+  margin-bottom: 20px;
+}
+/* Verified-people per-invitee roster editor (CreatePage). */
+.cp-roster {
+  margin-top: 4px;
+}
+.cp-roster-head {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 1.3fr 56px 28px;
+  gap: 8px;
+  font-size: 0.86rem;
+  color: var(--pdim);
+  padding: 0 2px 6px;
+}
+.cp-rrow {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 1.3fr 56px 28px;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+.cp-rlabel {
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--pfelt);
+  padding: 10px 2px;
+}
+.cp-rshow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: var(--pdim);
+  cursor: pointer;
+}
+.cp-rshow input {
+  margin: 0;
+  width: 18px;
+  height: 18px;
+}
+.cp-rname,
+.cp-remail,
+.cp-rmethod {
+  font: inherit;
+  font-size: 1.05rem;
+  padding: 11px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--pedge);
+  background: var(--pcard);
+  color: var(--ptext);
+  min-width: 0;
+}
+.cp-rname:focus,
+.cp-remail:focus,
+.cp-rmethod:focus {
+  outline: none;
+  border-color: var(--pfelt);
+}
+.cp-rdel {
+  font: inherit;
+  background: none;
+  border: none;
+  color: var(--pdim);
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+.cp-rdel:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.cp-radd {
+  font: inherit;
+  font-size: 1rem;
+  background: none;
+  border: 1px dashed var(--pedge);
+  border-radius: 9px;
+  padding: 9px 14px;
+  color: var(--pfelt);
+  cursor: pointer;
+  margin: 4px 0 8px;
+}
+/* Pre-entry roster preview (RoomPreview). */
+.rp-sub {
+  font-size: 1.1rem;
+  line-height: 1.55;
+  color: var(--ptext);
+  margin: 0 0 20px;
+}
+.rp-load {
+  color: var(--pdim);
+  font-size: 1.1rem;
+}
+.rp-bad {
+  border: 1px solid #c0392b;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.rp-bad code {
+  font-family: ui-monospace, monospace;
+}
+.rp-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--pedge);
+  border-radius: 10px;
+  background: var(--pcard);
+}
+.rp-pick {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rp-pick.on {
+  border-color: var(--pfelt);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-accent, #1a7f4e) 18%, transparent);
+}
+.rp-who {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.rp-name {
+  font-weight: 600;
+  font-size: 1.15rem;
+}
+.rp-email {
+  font-size: 0.92rem;
+  color: var(--pdim);
+  font-family: ui-monospace, monospace;
+}
+.rp-method {
+  font-size: 0.98rem;
+  white-space: nowrap;
+}
+.rp-soon {
+  font-size: 0.82rem;
+  color: #b35900;
+  border: 1px solid #d6a86b;
+  border-radius: 6px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+.cg-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cg-chip {
+  font: inherit;
+  font-size: 1.05rem;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--pedge);
+  background: transparent;
+  color: var(--ptext);
+  cursor: pointer;
+}
+.cg-chip.on {
+  border-color: var(--pfelt);
+  background: color-mix(in srgb, var(--brand-accent, #1a7f4e) 12%, transparent);
+  color: var(--pfelt);
+  font-weight: 600;
+}
+.cg-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.cg-blurb {
+  margin: 12px 2px 14px;
+  font-size: 1rem;
+  color: var(--pdim);
+  line-height: 1.45;
+}
+.cg-people {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--pedge);
+  background: var(--pcard);
+  color: var(--ptext);
+  resize: vertical;
+}
+.cg-people:focus {
+  outline: none;
+  border-color: var(--pfelt);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-accent, #1a7f4e) 18%, transparent);
+}
+.cg-err {
+  margin: 12px 2px 0;
+  color: #c0392b;
+  font-size: 1rem;
+}
+.cg-result {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--pedge);
+}
+.cg-note {
+  margin: 0 2px 10px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+.cg-linkrow {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.cg-link {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 0.74rem;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--pedge);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cg-copy {
+  flex: none;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--pfelt);
+  background: transparent;
+  color: var(--pfelt);
+  cursor: pointer;
+}
+.cg-guests {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cg-guest {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.cg-guest-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  flex: none;
+  min-width: 84px;
+}
+.cg-fine {
+  margin: 12px 2px 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--pdim);
+}
+.landing .hint {
+  margin-top: 10px;
+  color: var(--pdim);
+}
+.landing .hint-room {
+  margin-top: 6px;
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.etym {
+  margin: 56px auto 0;
+  max-width: 540px;
+  padding: 14px 18px;
+  border-left: 3px solid var(--pfelt);
+  background: var(--pcard);
+  border: 1px solid var(--pedge);
+  border-left: 3px solid var(--pfelt);
+  border-radius: 0 12px 12px 0;
+  color: var(--pdim);
+  text-align: left;
+  font-size: 0.92rem;
+}
+.etym strong {
+  color: var(--ptext);
+}
+.why {
+  display: grid;
+  /* 4 cards → a balanced 2×2 on desktop (repeat(3) left a lone 4th card on row 2). */
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 40px;
+  text-align: left;
+}
+@media (max-width: 640px) {
+  .why {
+    grid-template-columns: 1fr;
+  }
+  .hero {
+    margin-top: 7vh;
+  }
+  /* "Set up your room" — on a narrow card the Advanced hint is too long to sit next to the title, so
+     wrap it onto its OWN line under "Advanced" (cleanly, not mid-phrase), with the caret kept on the
+     title row. */
+  .cp-adv-h {
+    align-items: flex-start;
+  }
+  .cp-adv-h em {
+    display: block;
+    margin-top: 2px;
+  }
+}
+.why .card {
+  background: var(--pcard);
+  border: 1px solid var(--pedge);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(30, 40, 35, 0.05);
+}
+.why h2 {
+  font-size: 1rem;
+  margin: 0 0 8px;
+}
+.why p {
+  margin: 0;
+  color: var(--pdim);
+  font-size: 0.88rem;
+}
+.uses {
+  margin-top: 44px;
+}
+.uses h2 {
+  font-size: 1.05rem;
+  margin-bottom: 6px;
+}
+.uses p {
+  color: var(--pdim);
+  max-width: 560px;
+  margin: 0 auto;
+  font-size: 0.92rem;
+}
+/* CTA button inside a centered text section (e.g. "Play Whist with an AI kibitzer") — a
+   standalone, centered pill with breathing room, not an inline tag hugging the paragraph. */
+.uses .start {
+  display: block;
+  width: fit-content;
+  margin: 20px auto 0;
+  text-decoration: none;
+}
+.demo-link {
+  color: var(--pfelt);
+  font-weight: 600;
+  font-size: 0.92rem;
+  /* Keep a CTA link whole — it wraps to the next line as a unit instead of splitting
+     mid-phrase (e.g. "read every line on GitHub ↗" breaking across two lines). */
+  white-space: nowrap;
+}
+.fine {
+  /* `auto` horizontal — NOT 0 — or it overrides .landing > * (same specificity,
+     later in source) and pins the footer block to the left. */
+  margin: 52px auto 12px;
+  color: var(--pdim);
+  font-size: 0.78rem;
+  text-align: center;
+}
+.fine a {
+  color: var(--pfelt);
+}
+.brand {
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* Room page — a light share-this-link page; the call is the mounted widget. */
+.roompage .roomhero {
+  margin-top: 16vh;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.roomlabel {
+  margin: 0;
+  color: #5c6670;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.roomname {
+  margin: 0;
+  font-size: 2.2rem;
+  letter-spacing: -0.01em;
+}
+.roomid {
+  margin: 4px 0 0;
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+  color: var(--pdim);
+}
+.roompage .copy {
+  background: var(--brand-accent, #1a7f4e);
+  color: #fff;
+  border: 0;
+  font-weight: 700;
+  font-size: 1.05rem;
+  padding: 12px 26px;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--brand-accent, #1a7f4e) 25%, transparent);
+}
+.roompage .copy:hover {
+  filter: brightness(1.08);
+}
+.roompage .hint {
+  max-width: 420px;
+  color: #5c6670;
+}
+/* Scan-to-join QR (lazy-loaded) — see RoomQR in App.tsx. */
+.roomqr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.relaytoggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 0.92rem;
+  color: #3a3a3a;
+  cursor: pointer;
+  user-select: none;
+}
+.relaytoggle input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.relaytoggle em {
+  color: #777;
+  font-style: normal;
+}
+.qrtoggle {
+  background: none;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  color: #1f6f4f;
+  font: inherit;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.qrtoggle:hover {
+  border-color: var(--brand-accent, #1a7f4e);
+}
+.qrbox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.qrbox .qr {
+  width: 200px;
+  height: 200px;
+  padding: 12px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+.qrbox .qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* Paste-a-license-key affordance (premium relay) — see PremiumKey in App.tsx. */
+.roompage .premkey-link {
+  background: none;
+  border: 0;
+  color: #1f6f4f;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 4px 6px;
+  margin-top: 2px;
+}
+.roompage .premkey-link:hover {
+  text-decoration: underline;
+}
+.roompage .premkey {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.roompage .premkey-row {
+  display: flex;
+  gap: 6px;
+}
+.roompage .premkey-row input {
+  background: #fff;
+  border: 1px solid #cdd6d0;
+  border-radius: 9px;
+  padding: 8px 11px;
+  font: inherit;
+  font-size: 0.9rem;
+  min-width: 210px;
+  color: #20262b;
+}
+.roompage .premkey-row button {
+  background: var(--brand-accent, #1a7f4e);
+  color: #fff;
+  border: 0;
+  border-radius: 9px;
+  padding: 8px 16px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.roompage .premkey-note {
+  margin: 0;
+  max-width: 360px;
+  font-size: 0.78rem;
+  color: #5c6670;
+}
+.roompage .premkey-note a {
+  color: var(--brand-accent, #1a7f4e);
+  font-weight: 700;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+/* Lobby */
+.lobby {
+  margin-top: 14vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 420px;
+}
+.lobby label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--dim);
+}
+.lobby input {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.join {
+  background: var(--good);
+  color: #04130d;
+  font-weight: 700;
+  border: 0;
+  padding: 12px 18px;
+}
+.hint {
+  color: var(--dim);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+/* Call */
+.call {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: minmax(160px, 38vh);
+  gap: 10px;
+}
+.tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.tile video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.tile.self video {
+  transform: scaleX(-1); /* selfie mirror */
+}
+.tile.self video.no-mirror {
+  transform: none; /* rear camera shows as-is */
+}
+.tile-flip {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.45);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.tile.self {
+  border-color: color-mix(in srgb, var(--brand-accent, #3fb950) 55%, transparent);
+}
+.tile.speaking {
+  box-shadow:
+    inset 0 0 0 2px var(--good),
+    0 0 14px color-mix(in srgb, var(--brand-accent, #3fb950) 40%, transparent);
+}
+.face {
+  font-size: 3.4rem;
+}
+/* Voice-reactive avatar: the emoji bounces while its owner speaks. */
+.tile.speaking .face {
+  animation: face-bounce 0.7s ease-in-out infinite;
+}
+@keyframes face-bounce {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+  }
+  35% {
+    transform: scale(1.22) translateY(-4px);
+  }
+}
+/* Avatar picker (lobby) */
+.avatars {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.avatar-pick {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.avatar-pick.picked {
+  border-color: var(--brand-accent, #1a7f4e) !important;
+  box-shadow: inset 0 0 0 1px var(--brand-accent, #1a7f4e);
+}
+.tag {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: rgba(0, 0, 0, 0.55);
+}
+.mic-wave {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 22px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.mic-wave.on {
+  opacity: 1;
+}
+.mic-wave span {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--good);
+  transform: scaleY(0.14);
+  transform-origin: bottom center;
+  will-change: transform;
+}
+.controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.controls .off {
+  color: var(--bad);
+  border-color: rgba(248, 81, 73, 0.5);
+}
+.controls .leave {
+  color: var(--bad);
+}
+.unlock {
+  align-self: center;
+  background: var(--good);
+  color: #04130d;
+  border: 0;
+  font-weight: 700;
+}
+.error {
+  color: var(--bad);
+  text-align: center;
+  margin: 0;
+}
+
+/* 📡 offline / relay-setup page (paper theme) */
+.beta {
+  font-size: 0.62em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a6d1a;
+  background: rgba(226, 192, 105, 0.22);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.offline-link {
+  display: inline-block;
+  margin-top: 22px;
+  color: #1f6f4f;
+  text-decoration: none;
+  font-size: 0.95rem;
+  border-bottom: 1px dashed rgba(31, 111, 79, 0.5);
+  padding-bottom: 2px;
+}
+.offline-link:hover {
+  color: var(--brand-accent, #0b3d2e);
+}
+
+.relaypage {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+.relaypage header {
+  margin-bottom: 8px;
+}
+.relayhero {
+  margin: 18px 0 34px;
+}
+.relaylabel {
+  color: #1f6f4f;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.relayhero h2 {
+  font-size: 1.55rem;
+  line-height: 1.25;
+  margin: 0 0 12px;
+}
+.relayhero .sub {
+  color: #44504a;
+  line-height: 1.5;
+}
+.relaystep {
+  margin: 28px 0;
+}
+.relaystep h3 {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+  color: var(--brand-accent, #0b3d2e);
+}
+.relaystep p {
+  line-height: 1.5;
+  color: #2a342f;
+}
+.dlgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.dlbtn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--brand-accent, #0b3d2e);
+  color: #f3efe4;
+  text-decoration: none;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+.dlbtn:hover {
+  background: #0f5640;
+  transform: translateY(-1px);
+}
+.dl-label {
+  font-weight: 600;
+}
+.dl-sub {
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
+.fineprint {
+  font-size: 0.86rem;
+  color: #5a655f;
+  line-height: 1.5;
+}
+.relaypage code {
+  background: color-mix(in srgb, var(--brand-accent, #0b3d2e) 8%, transparent);
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: 0.86em;
+}
+.relayfoot {
+  margin-top: 40px;
+}
+.back {
+  color: #1f6f4f;
+  text-decoration: none;
+}
+
+/* Footer policy links on the landing page */
+.fine-links {
+  margin-top: 6px;
+}
+.fine-links a {
+  color: var(--pfelt);
+}
+/* The running build — so you can always see exactly what's loaded (footer + the
+   room page, where it doubles as a "which build is this device on?" check). */
+.fine-build {
+  margin-top: 10px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.5;
+  text-align: center;
+}
+
+/* "A new version is ready" — shown by src/pwa.tsx when a deploy is detected.
+   Top-centre so it never collides with the bottom-right call button. */
+.kbz-update {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483600;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 9px 9px 9px 16px;
+  border-radius: 999px;
+  background: var(--brand-accent, #0b3d2e); /* a build's accent (VITE_BRAND_ACCENT) recolours the update pill */
+  color: #fff;
+  font: 14px/1.3 system-ui, sans-serif;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+.kbz-update button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 16px;
+  background: var(--brand-accent, #3fb950);
+  color: #04130d;
+  font: 700 14px system-ui, sans-serif;
+  cursor: pointer;
+}
+.kbz-update button:hover {
+  filter: brightness(1.08);
+}
+/* A rebrand's bright-green pill button doesn't suit an arbitrary accent — neutral white pill, accent text. */
+.brand-rebrand .kbz-update button {
+  background: #fff;
+  color: var(--brand-accent, #0b3d2e);
+}
+
+/* Scannable privacy chips under the hero */
+.privacy-strip {
+  list-style: none;
+  padding: 0;
+  margin: 26px auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 10px;
+  max-width: 560px;
+}
+.privacy-strip li {
+  background: color-mix(in srgb, var(--brand-accent, #0b3d2e) 7%, transparent);
+  color: var(--brand-accent, #0b3d2e);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* "See it live in the original app" proof callout */
+.seelive {
+  background: color-mix(in srgb, var(--brand-accent, #0b3d2e) 5%, transparent);
+  border-left: 3px solid #1f6f4f;
+  padding: 12px 14px;
+  border-radius: 8px;
+  line-height: 1.55;
+}
+
+
+
+/* Legal pages (Privacy / Terms) — long-form prose on the paper theme */
+.legal .legal-title {
+  font-size: 1.7rem;
+  margin: 18px 0 2px;
+  color: var(--brand-accent, #0b3d2e);
+}
+.legal .legal-eff {
+  color: var(--pdim);
+  font-size: 0.82rem;
+  margin: 0 0 22px;
+}
+.legal .legal-lead {
+  font-size: 1.05rem;
+  line-height: 1.55;
+  color: #2a342f;
+}
+.legal h3 {
+  font-size: 1.12rem;
+  margin: 26px 0 8px;
+  color: var(--brand-accent, #0b3d2e);
+}
+.legal p,
+.legal li {
+  line-height: 1.6;
+  color: #2a342f;
+}
+.legal ul {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+.legal li {
+  margin: 6px 0;
+}
+.legal a {
+  color: #1f6f4f;
+}
+.legal .legal-nav {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--brand-accent, #0b3d2e) 15%, transparent);
+  display: flex;
+  gap: 18px;
+  font-size: 0.9rem;
+}
+
+/* --- Wake pairing (dev) — Settings entry + the #wake screen ------------------------ */
+.settings-wake {
+  display: block;
+  margin: 12px 0 0;
+  padding: 0;
+  font-size: 0.82rem;
+  color: var(--accent, var(--brand-accent, #0b3d2e));
+  text-align: left;
+}
+.settings-wake em {
+  color: var(--pdim);
+  font-style: normal;
+  font-size: 0.74rem;
+}
+.wake-setup {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: max(16px, env(safe-area-inset-top)) 18px max(16px, env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+.wake-card {
+  width: 100%;
+  max-width: 28rem;
+}
+.wake-card h1 {
+  font-size: 1.25rem;
+  margin: 0 0 0.35rem;
+}
+.wake-sub {
+  margin: 0 0 1rem;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--pdim);
+}
+.wake-label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--pdim);
+  margin-bottom: 0.3rem;
+}
+.wake-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.18));
+  border-radius: 0.6rem;
+  font-size: 1rem;
+}
+.wake-go {
+  width: 100%;
+  margin-top: 0.8rem;
+  padding: 0.8rem 1rem;
+  border: 0;
+  border-radius: 0.7rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: var(--accent, var(--brand-accent, #0b3d2e));
+  color: #fff;
+}
+.wake-go:disabled {
+  opacity: 0.5;
+}
+.wake-status {
+  margin: 0.9rem 0 0;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.55rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 0.8rem/1.4 ui-monospace, Menlo, monospace;
+  background: rgba(0, 0, 0, 0.05);
+}
+.wake-ok {
+  color: #0a7d3a;
+}
+.wake-err {
+  color: #b3261e;
+}
+.wake-back {
+  display: block;
+  margin-top: 1rem;
+}
+.wake-warn {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 196, 0, 0.12);
+  border: 1px solid rgba(180, 130, 0, 0.35);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+/* ── Short LANDSCAPE compaction ───────────────────────────────────────────────────────────────────
+   Phones on their side. Compress the launcher hero ("Start a room") and the "Set up your room" card so
+   the default fits the screen instead of pushing the primary action below the fold. Everything scrolls
+   the DOCUMENT — NO internal-scroll surface (an internal overflow:auto box desyncs the tap hit-map on
+   iOS after a portrait→landscape rotation).
+   PLACEMENT: this block is at the END of the file ON PURPOSE — it must come AFTER the base .createpage /
+   .cp-* / .open-* / hero rules so its overrides win on equal specificity (CSS source order). Moving it
+   earlier silently breaks the compaction (the later base rules clobber it). */
+@media (orientation: landscape) and (max-height: 560px) {
+  /* Pull the whole launcher up: a short landscape phone has little headroom, so the dead space above
+     "Kibitz" is what pushes the join form's "Scan a QR code" button off the bottom. */
+  .hero,
+  .launcher .hero {
+    margin-top: 4px;
+  }
+  .hero h1 {
+    font-size: 2rem;
+  }
+  .tagline {
+    font-size: 1.05rem;
+    margin: 6px 0 4px;
+  }
+  .sub {
+    margin: 0 auto 14px;
+    font-size: 0.92rem;
+  }
+  .start {
+    font-size: 1.05rem;
+    padding: 11px 26px;
+  }
+  .hint {
+    margin: 2px 0;
+  }
+  .launcher-or {
+    margin: 4px auto 4px;
+  }
+  .entry-row {
+    margin: 6px auto;
+  }
+  /* Clear the iOS home indicator (swipe bar) in standalone landscape so the last control — the QR
+     button on the launcher, the Create button on the card — isn't tucked under it. */
+  .landing,
+  .launcher,
+  .installpage {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+  /* "Open a room" join form (launcher / landing): compress so the paste row, the input+Join and the
+     "📷 Scan a QR code" button all fit a short landscape screen. */
+  .open-form {
+    margin-top: 4px;
+  }
+  .open-paste {
+    padding: 9px 18px;
+    font-size: 0.95rem;
+  }
+  .open-input {
+    padding: 9px 12px;
+    font-size: 0.95rem;
+  }
+  .open-go {
+    padding: 9px 18px;
+    font-size: 0.95rem;
+  }
+  .open-err {
+    margin-top: 4px;
+  }
+  .open-scan {
+    margin-top: 6px;
+  }
+
+  /* "Set up your room" — tighten the vertical rhythm hard so the collapsed default FITS, drop the long
+     relay explainer prose, and let the DOCUMENT scroll when Advanced is open (no card-internal scroll →
+     no iOS tap-offset). Bottom padding clears the home indicator. */
+  .createpage {
+    padding: 8px 16px calc(12px + env(safe-area-inset-bottom));
+    align-items: flex-start; /* a tall (Advanced-open) card scrolls from the top, never clips ← Back */
+  }
+  .cp-card {
+    padding: 12px 16px 14px;
+  }
+  .cp-h {
+    font-size: 1.3rem;
+    margin: 0 0 8px;
+  }
+  .cp-back {
+    margin-bottom: 2px;
+    font-size: 0.95rem;
+  }
+  .cp-label {
+    margin-bottom: 4px;
+  }
+  .cp-name {
+    font-size: 1.02rem;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+  }
+  .cp-adv-h {
+    margin-top: 8px;
+    padding: 8px 12px;
+  }
+  .cp-adv-body {
+    margin-top: 4px;
+  }
+  .cp-relay {
+    margin-top: 8px;
+    font-size: 0.95rem;
+  }
+  /* The relay explainer is a 3-line paragraph; in short landscape keep the toggle, drop the prose. */
+  .cp-relay + .cg-fine {
+    display: none;
+  }
+  .cp-prem {
+    margin-top: 8px;
+    padding: 10px;
+  }
+  .cp-go {
+    margin-top: 8px;
+    font-size: 1.12rem;
+    padding: 10px 16px;
+  }
+}
+
+/* A rebrand's landing "points" list (Landing.tsx, shown in place of the default's marketing). */
+.uses .brand-points {
+  list-style: none;
+  padding: 0;
+  margin: 14px auto 0;
+  max-width: 38em;
+  text-align: left;
+}
+.uses .brand-points li {
+  position: relative;
+  padding: 9px 0 9px 28px;
+  border-top: 1px solid var(--pedge);
+  color: var(--ptext);
+}
+.uses .brand-points li:first-child {
+  border-top: 0;
+}
+.uses .brand-points li::before {
+  content: '✓';
+  position: absolute;
+  left: 2px;
+  color: var(--pfelt);
+  font-weight: 800;
+}
