@@ -1,0 +1,5437 @@
+/* Kibitz widget — the original call panel, generalized. Lives in a shadow root.
+   Two layouts: fixed 2×2 grid (default) and a compact 1×4 strip. Ghost mode
+   makes the tile area translucent AND click-through (speakers pop solid);
+   only the header + controls stay tappable. */
+
+:host {
+  all: initial;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.kw-pill,
+.kw-panel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483000;
+  font:
+    14px/1.45 system-ui,
+    sans-serif;
+  /* Don't let a horizontal overscroll at the panel edge become a browser back/forward navigation (Android
+     overscroll-back; pairs with the iOS edge-swipe touchstart guard in Widget.tsx). Vertical scroll is unaffected. */
+  overscroll-behavior-x: contain;
+}
+
+/* ?debug readout — top-left, out of the way of the panel/pill (bottom-right). */
+.kw-debug {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 2147483600;
+  max-width: 60vw;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.82);
+  color: #7ef0a8;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+
+/* Collapsed: a felt-green pill. The mic is an inline SVG (not an emoji), so it's
+   identical on every OS and crisply sized to the circle. */
+.kw-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--kw-accent, #1a7f4e);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.kw-pill svg {
+  width: 27px;
+  height: 27px;
+  stroke-width: 2.1;
+}
+.kw-pill:hover {
+  filter: brightness(1.08);
+}
+.kw-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #f85149;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 20px;
+}
+/* Someone's knocking — amber, so it reads as "needs you" not "missed call". */
+.kw-badge-knock {
+  background: #d29922;
+  color: #04130d;
+}
+.kw-pill-knock {
+  animation: kw-pill-knock 1.8s ease-in-out infinite;
+}
+@keyframes kw-pill-knock {
+  0%,
+  100% {
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+  50% {
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.35),
+      0 0 0 5px rgba(210, 153, 34, 0.45);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kw-pill-knock,
+  .kw-ic.warn,
+  .kw-ink-dot {
+    animation: none;
+  }
+}
+
+/* Expanded panel — slightly translucent like the original app's (the page glows through
+   faintly even with ghost off). */
+.kw-panel {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  color: #e6edf3;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  /* This is an APP surface, not a document: no text selection, and no long-press copy/share callout.
+     iOS otherwise runs its selection/callout gesture recognizer in front of every touch (you saw the
+     copy menu on long-press), which delays/eats taps on the controls. Chat + inputs opt back in below. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+/* Real text you'd want to copy / edit stays selectable. */
+.kw-msg,
+.kw-panel input,
+.kw-panel textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+/* The panel is focusable (tabIndex -1) so keyboard shortcuts can scope to it; it's a
+   container, not a control, so suppress the focus ring. */
+.kw-panel:focus {
+  outline: none;
+}
+.kw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  padding: 7px 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 0;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+/* touch-action does NOT inherit — without this, a touch-drag starting on a
+   header button gets claimed by the browser for scrolling (pointercancel). */
+.kw-head * {
+  touch-action: none;
+}
+.kw-title {
+  font-size: 0.78rem;
+  color: #8b949e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The in-call participant count (top-left) — a button-styled chip (the people glyph + the count), matching .kw-ic
+   so it reads as one of the controls rather than a stray emoji. */
+.kw-rostercount {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #161b22;
+  color: #e6edf3;
+  border-radius: 7px;
+  height: 22px;
+  padding: 0 7px;
+  font-size: 0.72rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+.kw-rostercount svg {
+  width: 13px;
+  height: 13px;
+}
+.kw-spacer {
+  flex: 1;
+}
+
+/* Icon controls (header row) — sized so all in-call controls fit the 300px panel. */
+.kw-ic {
+  position: relative; /* anchors the unread badge */
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #161b22;
+  color: #e6edf3;
+  border-radius: 7px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+/* Mic-off start-of-call nudge: kw-ic-wrap wraps ONLY the mic button so the callout anchors above it. */
+.kw-ic-wrap { position: relative; display: inline-flex; flex: 0 0 auto; }
+/* In-call device switcher (desktop): a ▾ chevron chip on the corner of the mic/camera/speaker button opens a menu
+   of that kind's devices; picking one swaps live (replaceTrack / setSinkId). Anchored to .kw-dev-wrap. */
+.kw-dev-caret {
+  position: absolute; right: -4px; bottom: -4px; z-index: 3;
+  width: 13px; height: 13px; padding: 0; border-radius: 50%;
+  background: var(--kw-accent, #2563eb); color: #fff; border: 1.5px solid #11161c;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.kw-dev-caret svg { width: 7px; height: 7px; }
+.kw-dev-caret[aria-expanded="true"] { background: #1746b8; }
+/* Positioned `fixed` off the button's rect + PORTALED to the panel root (see MediaControls) — a nested absolute
+   popover renders behind the call tiles' stacking layer, so it must live on the top layer. */
+.kw-dev-menu {
+  z-index: 2147483000; min-width: 200px; max-width: 260px; padding: 5px;
+  background: #0f151c; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 12px;
+  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, 0.75);
+}
+.kw-dev-menu::after {
+  content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: #0f151c;
+}
+.kw-dev-menu-end::after { left: auto; right: 8px; transform: none; }
+.kw-dev-h { margin: 3px 8px 5px; font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; color: #8a94a6; font-weight: 600; }
+.kw-dev-opt {
+  display: flex; align-items: center; gap: 7px; width: 100%; padding: 8px 9px;
+  border: 0; background: transparent; border-radius: 8px; cursor: pointer;
+  color: #e6edf3; font: inherit; font-size: 0.82rem; text-align: start;
+}
+.kw-dev-opt:hover { background: rgba(255, 255, 255, 0.07); }
+.kw-dev-opt.on { color: #fff; }
+.kw-dev-tick { flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; color: var(--kw-accent, #2563eb); }
+.kw-dev-tick svg { width: 13px; height: 13px; }
+.kw-dev-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A FLOATING mic reminder (rendered at the panel level, above the tiles/stage — z:13 clears them; the agent-bubble
+   layer is z:12), NOT anchored to the bottom-bar icon (where the tiles buried it). Sits centered just above the bar;
+   tap it to unmute directly. */
+.kw-micnudge {
+  position: absolute; left: 42%; bottom: 92px; z-index: 13; white-space: nowrap; pointer-events: auto;
+  display: inline-flex; align-items: center; gap: 0.15em;
+  padding: 0.22em 0.3em 0.22em 0.38em; border-radius: 999px;
+  /* scale with the screen (like the agent panel) so it isn't tiny on desktop; children are em → they ride this. */
+  font-size: clamp(0.8rem, 0.4rem + 0.9vw, 1.2rem);
+  background: var(--kw-accent, #3b7bff); box-shadow: 0 14px 32px -8px rgba(0, 0, 0, 0.62);
+  animation: kw-micnudge-in 0.26s ease both, kw-micnudge-bob 2.4s ease-in-out 0.5s infinite;
+}
+.kw-micnudge-main {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 0.55em;
+  padding: 0.47em 0.47em 0.47em 0.7em; border-radius: 999px;
+  font-size: 1em; font-weight: 640; line-height: 1; color: #fff;
+}
+.kw-micnudge-main svg { width: 1.15em; height: 1.15em; flex: none; }
+.kw-micnudge-main:hover { filter: brightness(1.08); }
+.kw-micnudge-x {
+  all: unset; box-sizing: border-box; cursor: pointer; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2em; height: 2em; border-radius: 50%; color: #fff; font-size: 1em;
+  background: rgba(255, 255, 255, 0.16);
+}
+.kw-micnudge-x:hover { background: rgba(255, 255, 255, 0.32); }
+.kw-micnudge-main:focus-visible, .kw-micnudge-x:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@keyframes kw-micnudge-in { from { opacity: 0; transform: translateX(-50%) translateY(5px) scale(0.96); } to { opacity: 1; transform: translateX(-50%); } }
+@keyframes kw-micnudge-bob { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-4px); } }
+
+/* Engage nudge — a separate one-shot hint at the TOP (so it never collides with the bottom mic pill). Points the
+   summoner at how to hand the agent the floor; auto-hides after 10s. A pure hint (pointer-events: none). */
+/* A compact pill (not a blob): the wake cue AS a button + a ✕. The pill is the colored button; the ✕ sits beside it. */
+.kw-engagenudge {
+  position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 14;
+  max-width: calc(100% - 20px); pointer-events: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  animation: kw-engagenudge-in 0.28s ease both;
+}
+.kw-engagenudge-go {
+  appearance: none; border: 0; cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 16px; border-radius: 999px;
+  background: var(--kw-accent, #3b7bff); color: #fff; font: inherit;
+  font-size: 0.84rem; font-weight: 700; line-height: 1;
+  box-shadow: 0 14px 32px -8px rgba(0, 0, 0, 0.6);
+  animation: kw-engagenudge-glow 2s ease-in-out 0.6s infinite;
+}
+.kw-engagenudge-go:hover { filter: brightness(1.06); }
+.kw-engagenudge-go:active { transform: scale(0.97); }
+.kw-engagenudge[data-confirm="true"] .kw-engagenudge-go {
+  background: #16a34a; animation: none;
+  box-shadow: 0 14px 32px -8px rgba(0, 0, 0, 0.6), 0 0 0 4px rgba(22, 163, 74, 0.28);
+}
+.kw-engagenudge-x {
+  appearance: none; border: 0; cursor: pointer; flex: none;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(20, 24, 32, 0.72); color: #fff; font: inherit; font-size: 0.78rem; line-height: 1;
+  box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.7);
+}
+.kw-engagenudge-x:hover { background: rgba(20, 24, 32, 0.9); }
+@keyframes kw-engagenudge-in { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes kw-engagenudge-glow { 0%, 100% { box-shadow: 0 14px 32px -8px rgba(0, 0, 0, 0.6), 0 0 0 0 rgba(120, 170, 255, 0); } 50% { box-shadow: 0 14px 32px -8px rgba(0, 0, 0, 0.6), 0 0 0 6px rgba(120, 170, 255, 0.22); } }
+@media (prefers-reduced-motion: reduce) { .kw-micnudge { animation: kw-micnudge-in 0.26s ease both; } }
+.kw-ic:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.kw-ic.active {
+  border-color: var(--kw-accent, #3fb950);
+  box-shadow: inset 0 0 0 1px var(--kw-accent, #3fb950);
+}
+.kw-ic.off {
+  color: #f85149;
+  border-color: rgba(248, 81, 73, 0.5);
+}
+.kw-ic.leave {
+  color: #f85149;
+  /* Bigger than the other top-bar icons — the leave ✕ should be the easiest to spot and tap. Flex-center so the
+     glyph (and the "Leave?" confirm) sit centered, not pinned to the top of the box by line-height. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 1.1rem; /* now sizes ONLY the "Leave?" confirm text — the ✕ itself is an SVG (sized below) */
+  font-weight: 700;
+}
+/* The leave ✕ is an SVG, not a text glyph (a text ✕ renders at a different size per device font — the bug this
+   fixes). Sized a touch bigger than the other top-bar icons (15px) so it stays the easiest to spot and tap. */
+.kw-ic.leave svg {
+  width: 20px;
+  height: 20px;
+}
+/* Armed (first tap on ✕): widen into a clear red "Leave?" confirm; a second tap leaves. */
+.kw-ic.leave.armed {
+  width: auto;
+  padding: 0 8px;
+  font-weight: 700;
+  white-space: nowrap; /* keep "Leave?" on ONE line — it was wrapping to two on iOS */
+  background: #f85149;
+  color: #fff;
+  border-color: #f85149;
+}
+.kw-ic svg {
+  display: block;
+  margin: 0 auto;
+}
+
+/* Avatar picker row (header 🙂 button toggles it) — the original app's call-avatars. */
+.kw-avatars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  background: #000;
+  border-bottom: 0;
+}
+.kw-av {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 1.3rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid transparent;
+  color: #e6edf3;
+  padding: 0;
+  cursor: pointer;
+}
+.kw-av:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.kw-av.sel {
+  border-color: var(--kw-accent, #3fb950);
+  background: color-mix(in srgb, var(--kw-accent, #3fb950) 18%, transparent);
+}
+
+/* Transparency slider row (see-through mode only) — the original app's call-op-row. */
+.kw-oprow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  color: #8b949e;
+  background: #000;
+}
+.kw-op {
+  flex: 1;
+  accent-color: var(--kw-accent, #1a7f4e);
+  cursor: pointer;
+}
+
+/* Tiles — fixed 2×2: one person sits in a quarter-cell, cells fill as people
+   join; 5+ keep the same cell size and scroll. Empty cells are just blank. */
+.kw-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  grid-auto-rows: 1fr;
+  gap: 6px;
+  padding: 8px;
+  height: 300px;
+  overflow-y: auto;
+  /* Capture the horizontal layout-swipe (like .kw-stage) so you can swipe OUT of Gallery, not just into it —
+     without pan-y the grid's default touch-action lets the browser eat the horizontal drag (esp. on Samsung/
+     Android). pan-y keeps native VERTICAL scroll (overflow-y above). The filmstrip (.kw-grid.kw-faces) overrides
+     this with pan-x, so it still scrolls sideways and opts out of the swipe. */
+  touch-action: pan-y;
+  background: #000;
+}
+/* 1–2 people: a single 1×2 row at half height — the everyday two-person call
+   doesn't deserve a half-empty 2×2. A third joiner grows it to the full grid. */
+.kw-grid.kw-duo {
+  grid-template-rows: 1fr;
+  height: 150px;
+}
+/* Solo (just you — before anyone joins, or the landing demo): ONE tile that
+   fills the area, not a half-empty 2-column row. In the PiP pop-out the grid is
+   flex:1, so this fills the whole window instead of stretching into a tall
+   rectangle with an empty second column. */
+.kw-grid.kw-solo {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  height: 200px;
+}
+
+/* Stage — a presenter's screen, big and letterboxed, with everyone else dropped to
+   a small face strip underneath. The panel widens so a shared tab is watchable. */
+.kw-stagewrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative; /* anchors the 'stage' / 'tile' agent-menu overlays */
+  /* Reserve HORIZONTAL gestures for the layout swipe (vertical still scrolls the gallery). Without
+     this, Android claims a horizontal drag as a scroll attempt and fires pointercancel — so the swipe
+     never completes (iOS was more lenient, which is why it worked there). The filmstrip overrides to
+     pan-x so it can still scroll sideways. */
+  touch-action: pan-y;
+}
+.kw-panel.kw-staging {
+  width: min(560px, 92vw);
+}
+.kw-stage {
+  position: relative;
+  display: flex;
+  aspect-ratio: 16 / 9;
+  max-height: 56vh;
+  background: #000;
+  border-bottom: 0;
+  /* NO overflow:hidden by default — on iOS Safari it DISLOCATES an absolutely-positioned
+     child's hit area (the ink toolbar's taps were landing on .kw-stage / the control bar
+     below it, not the buttons). Clip ONLY while actually zoomed (kw-zoomclip), so a pinched
+     screen still stays in the frame but the toolbar is hittable the rest of the time. */
+}
+.kw-stage.kw-zoomclip {
+  overflow: hidden;
+}
+/* While a presenter owns the stage, claim the touch gestures so a two-finger pinch
+   zooms the screen instead of the browser panning the gallery. */
+.kw-stage.kw-zoomable {
+  touch-action: none;
+}
+/* The element the zoom transform rides; wraps the video tile (and mirrors onto the
+   ink layer) so both magnify together. It's display-only — pointer-events:none so it
+   NEVER intercepts taps meant for the ink toolbar/canvas above it (in landscape it
+   fills the full height over the toolbar, and a composited layer can otherwise win
+   iOS hit-testing despite z-index). `will-change` is applied inline ONLY while zoomed
+   so we don't force a permanent GPU layer that triggers that very interception. */
+.kw-zoomlayer {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.kw-stage .tile {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: #000;
+  box-shadow: none;
+}
+/* The big active-SPEAKER focus tile: give it the SAME bordered-bubble look as the smaller face tiles so an
+   avatar-only speaker reads as a tile on the all-black theme, not a loose floating letter. Two cases:
+   • GALLERY (no chat): the panel has .kw-speaker (gated !chatOpen), so a presenter's shared SCREEN (.kw-staging)
+     stays full-bleed/borderless.
+   • CHAT-SPLIT landscape: .kw-speaker is OFF in chat mode, so the speaker falls through here. Scope to
+     .kw-haschat:not(.kw-hasstage) — a presenter sharing in chat sets .kw-hasstage (its tile is .tile.stage),
+     so this excludes the share and only borders the avatar/speaker tile. Border is NEUTRAL white (not the brand
+     accent — the accent can be any colour per instance). */
+.kw-speaker .kw-stage .tile,
+.kw-haschat:not(.kw-hasstage) .kw-stage .tile {
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 10px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+/* Floating "back to 1×" chip, shown only while zoomed. */
+.kw-zoomreset {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  cursor: pointer;
+}
+/* "Full-screen the shared screen" button (top-left; zoom-reset owns top-right). */
+.kw-stagefs {
+  position: absolute;
+  /* Top-RIGHT, dropped BELOW where the agent stage top-bar (.kw-agentbar--stage — a centered pill that can grow to
+     full width) sits, so it never covers it; a FIXED spot that doesn't drift with the bar. The shared ⏹ Stop owns
+     the top-LEFT. In max/fullscreen the rule below repositions it as the exit ✕ (top-right corner). */
+  top: 58px;
+  right: 8px;
+  z-index: 10; /* above the staged-image overlay (.kw-staged-vid z:8) + ink-zoom (z:9) */
+  /* Promote to its OWN compositing layer so it paints ABOVE the stage share <video>. For a VIEWER the .kw-stage
+     holds that video, which on Android composites as a hardware overlay above the DOM — without this the button
+     vanished for viewers (only the presenter, whose .kw-stage tile is blank, saw it). translateZ forces the layer. */
+  transform: translateZ(0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  font-size: 0.95rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.kw-stagefs.active {
+  background: rgba(0, 0, 0, 0.78);
+}
+/* Stage controls in the HEADER (direct children → inherit the header's height + gap). The shared Stop reads red;
+   armed (first tap) turns solid red and shows "Stop?" — a second tap within 4s confirms (guards a stray tap). */
+.kw-stagehdr-stop {
+  color: #ff6b6b;
+}
+.kw-stagehdr-stop.armed {
+  width: auto;
+  padding: 0 8px;
+  background: #b3261e;
+  border-color: #d0342c;
+  color: #fff;
+}
+.kw-fillwin .kw-stagehdr-stop.armed,
+.kw-full .kw-stagehdr-stop.armed {
+  width: auto;
+  padding: 0 12px;
+}
+.kw-stophint {
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+/* Real OS fullscreen of the stage → full-bleed black so a screen-mirror shows the shared screen edge-to-edge.
+   The inner layers fill it; the share video letterboxes (contain); the ink overlay re-measures + rides on top. */
+.kw-stage:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  background: #000;
+}
+.kw-stage:fullscreen .kw-zoomlayer,
+.kw-stage:fullscreen .tile,
+.kw-stage:fullscreen .tile video {
+  width: 100%;
+  height: 100%;
+}
+.kw-stage:fullscreen .tile video {
+  object-fit: contain;
+}
+/* iOS CSS "maximize" (kw-stagemax) — fills the viewport WITHOUT element.requestFullscreen (iOS can't fullscreen a
+   <div>). Mirrors the :fullscreen fill so the shared screen / staged image goes edge-to-edge. */
+.kw-stage.kw-stagemax {
+  position: fixed;
+  inset: 0; /* size by the edges, not width:100vw/height:100dvh — a fixed composited 100vw layer seams a hairline at the screen edges on iOS (see .kw-full) */
+  width: auto;
+  height: auto;
+  max-height: none;
+  z-index: 2147483000;
+  background: #000;
+}
+.kw-stage.kw-stagemax .kw-zoomlayer,
+.kw-stage.kw-stagemax .tile,
+.kw-stage.kw-stagemax .tile video {
+  width: 100%;
+  height: 100%;
+}
+.kw-stage.kw-stagemax .tile video {
+  object-fit: contain;
+}
+/* The exit ✕ must sit ABOVE the stage content + ink and be a big tap target in max/fullscreen — the small z:6
+   corner button got buried in OS fullscreen, so you couldn't tap it to leave ("can't go back" on Android). */
+.kw-stage.kw-stagemax .kw-stagefs,
+.kw-stage:fullscreen .kw-stagefs {
+  z-index: 2147483001;
+  width: 46px;
+  height: 46px;
+  font-size: 1.4rem;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  right: calc(env(safe-area-inset-right, 0px) + 10px);
+  background: rgba(0, 0, 0, 0.72);
+}
+.tile.stage video {
+  object-fit: contain; /* letterbox a screen — never crop it */
+  background: #000;
+  /* The shared-screen video is display-only — never a touch target. Without this, iOS composites
+     the <video> as a hardware overlay that EATS taps meant for the ink toolbar / canvas sitting above
+     it whenever the toolbar overlaps the video (i.e. landscape, where a 16:9 screen pillarboxes to full
+     height instead of letterboxing clear of the bottom bar). Zoom still works — the pinch lands on the
+     stage box, which is the gesture target; ink lands on the canvas/buttons, which are above. */
+  pointer-events: none;
+}
+/* Face strip under the stage: small fixed tiles in a scrollable row. */
+.kw-grid.kw-faces {
+  display: flex;
+  grid-template-columns: none;
+  grid-template-rows: none;
+  height: auto;
+  gap: 6px;
+  padding: 6px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: pan-x; /* the strip scrolls sideways (it opts out of the layout swipe) */
+}
+.kw-faces .tile {
+  flex: 0 0 76px;
+  height: 76px;
+}
+.kw-faces .face {
+  font-size: clamp(0.95rem, 40cqmin, 3rem);
+}
+/* In the pop-out window the stage fills it (the window IS the panel). */
+.kw-pip .kw-stage {
+  flex: 1 1 auto;
+  aspect-ratio: auto;
+  max-height: none;
+  min-height: 0;
+}
+
+/* Shared pointer / annotation overlay on the stage (see StageInk). The canvas + the
+   pointer layer sit over the video's content rect; the toolbar floats at the bottom. */
+/* Carries the stage's zoom transform over the canvas + pointers. Fills the stage
+   exactly (so the canvas's left/top still resolve against the stage box) and never
+   eats touches itself — the canvas re-enables pointer-events only when a tool is on. */
+.kw-ink-zoom {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+/* When the STAGER is staging a video, the staged-video control overlay (z-index 8) sits over the stage and buries
+   the ink layer — so the stager can't draw AND can't see others' marks (viewers have no overlay, so theirs works).
+   Lift the ink above the overlay, but ONLY when an overlay is present (screen-share / viewers untouched). The
+   canvas is pointer-events:none unless a tool is on, so the video controls underneath still work with the pen off. */
+.kw-panel:has(.kw-staged-vid) .kw-ink-zoom {
+  z-index: 9;
+}
+.kw-ink-canvas {
+  position: absolute;
+  z-index: 3;
+  touch-action: none;
+}
+.kw-ink-ptrs {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  overflow: hidden;
+}
+.kw-ink-ptr {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  transition:
+    left 0.08s linear,
+    top 0.08s linear;
+}
+.kw-ink-dot {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  /* box-shadow (white ring + coloured halo) is set inline in StageInk so the halo matches the dot's
+     colour. A gentle pulse draws the eye so the pointer can't be missed on a busy screen. */
+  animation: kw-laser-pulse 1.3s ease-in-out infinite;
+}
+@keyframes kw-laser-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.28);
+  }
+}
+.kw-ink-name {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 0 5px;
+  border-radius: 6px;
+  transform: translateX(4px);
+}
+.kw-ink-bar {
+  position: absolute;
+  /* Centre WITHOUT a transform: a `transform`ed element inside the stage's `overflow:hidden`
+     loses its tap area on iOS Safari (taps fall through to .kw-stage) — that was the dead toolbar.
+     left:0/right:0 + margin-inline:auto centres a fit-content absolute box, no transform needed. */
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  margin-inline: auto;
+  width: fit-content;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 10px;
+}
+.kw-ink-tool {
+  border: 0;
+  background: transparent;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.kw-ink-tool.on {
+  background: rgba(255, 255, 255, 0.22);
+}
+.kw-ink-sw {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+}
+.kw-ink-sw.on {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4);
+}
+/* Pen carries its current colour (an underline in that colour); the swatches are a popup ABOVE the pen
+   that auto-hides on pick — so the toolbar stays a single pen (it lives in the chat box when chat is open). */
+.kw-ink-pen-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.kw-ink-pen.on {
+  box-shadow: inset 0 -3px 0 0 var(--pen, #fff);
+}
+.kw-ink-palette {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 7px;
+  padding: 7px 9px;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+  z-index: 30;
+}
+.kw-ink-palette::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #000;
+}
+
+/* Corner grip — drag to resize (mouse or touch). Sits over the bottom-right corner;
+   a small L-mark hints at it. touch-action:none so a touch-drag resizes, not scrolls. */
+/* Window-style resize handles on EVERY edge + corner, like a real window. The call controls own the top
+   (header buttons) and bottom (control bar), so: the side edges sit in the tile area (clear of both); the
+   top edge clears the header's right-hand buttons; the bottom edge tucks into the control bar's bottom
+   padding (below the buttons); the corners are small. Generous hit zones + a visible grip on the sides. */
+.kw-rsz {
+  position: absolute;
+  z-index: 6;
+  touch-action: none;
+}
+/* Thin edge strips — just enough to grab, no chunky grip. The corners (below) are the obvious affordance. */
+.kw-rsz-l,
+.kw-rsz-r {
+  top: 44px; /* below the header */
+  bottom: 70px; /* above the bottom control bar */
+  width: 7px;
+  cursor: ew-resize;
+}
+.kw-rsz-l {
+  left: 0;
+}
+.kw-rsz-r {
+  right: 0;
+}
+.kw-rsz-t {
+  top: 0;
+  left: 18px;
+  right: 18px;
+  height: 7px;
+  cursor: ns-resize;
+}
+.kw-rsz-b {
+  bottom: 0;
+  left: 18px;
+  right: 18px;
+  height: 7px; /* in the control bar's bottom padding, below the buttons */
+  cursor: ns-resize;
+}
+/* All FOUR corners get a small diagonal handle. The bottom-bar buttons are inset (corners clear) and the
+   header's right-edge buttons are nudged clear of the top-right corner (.kw-head padding-right below), so
+   none of these block a control. z above the edges where they overlap, and above the floating bar. */
+.kw-rsz-tl,
+.kw-rsz-tr,
+.kw-rsz-bl,
+.kw-rsz-br {
+  width: 16px;
+  height: 16px;
+  z-index: 7;
+}
+.kw-rsz-tl {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+.kw-rsz-tr {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+.kw-rsz-bl {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+.kw-rsz-br {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+/* No visible corner marks — the diagonal resize cursor on hover is the affordance. */
+/* Keep the header's right-edge buttons (incl. Leave ✕) clear of the top-right resize corner. Embed corner
+   panel only — the room window / full screen don't show drag handles. */
+.kw-panel:not(.kw-fillwin):not(.kw-full):not(.kw-pip) .kw-head {
+  padding-right: 20px;
+}
+
+/* Full screen (the touch alternative to drag-resize): the panel fills the viewport and
+   the tile area flexes to take all the room below the header. Drops the floating box's
+   radius so it reads as a real full-screen view. */
+.kw-panel.kw-full {
+  /* Fill by hugging all four edges (inset:0), NOT width:100vw/height:100dvh. The panel is a composited layer
+     (overscroll-behavior-x + the huge z-index), and a fixed composited 100vw layer leaves the outermost device-pixel
+     column unpainted on iOS → the (light) page shows through as hairline lines at the left/right screen edges. inset:0
+     lets the browser snap the layer to exact viewport bounds. Same fix as .kw-fillwin.kw-winmax below. */
+  inset: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  border: 0; /* fills the viewport — no outer frame */
+  border-radius: 0;
+  z-index: 2147483100;
+}
+.kw-full .kw-stagewrap,
+.kw-full .kw-chat,
+.kw-full .kw-verify,
+.kw-fillwin .kw-stagewrap,
+.kw-fillwin .kw-chat,
+.kw-fillwin .kw-verify {
+  flex: 1;
+  min-height: 0;
+}
+.kw-full .kw-grid,
+.kw-fillwin .kw-grid {
+  flex: 1;
+  height: auto;
+}
+
+/* Dedicated room window (mount({ fill: true })): it fills the browser window and is
+   opaque — nothing underneath to ghost through. Position + size are JS-driven (the
+   resizable `win` rect); this just makes it read as a real window. */
+.kw-panel.kw-fillwin {
+  max-width: none;
+  border: 0; /* it fills the whole window — an outer frame just reads as a stray thick edge */
+  border-radius: 0;
+  /* Black surface so the video is the only thing with colour: the bottom safe-margin (and any gap a
+     faded bar leaves) reads as seamless letterbox rather than a filled teal strip. */
+  background: #000;
+}
+/* MAXIMIZED room window: fill the viewport by hugging all four edges (position:fixed + inset:0), NOT by
+   computing width:100vw/height:100dvh. With inset:0 the browser stretches the existing (black) panel
+   layer to the new size during a drag-resize — so it tracks the window edge with no lag, and never
+   leaves a backdrop strip showing for a frame (the white-margin-on-resize bug). PiP fills its window too. */
+.kw-panel.kw-fillwin.kw-winmax {
+  inset: 0;
+  width: auto;
+  height: auto;
+}
+.kw-fillwin .kw-head {
+  cursor: default; /* anchored — resize by the edges, don't drag it */
+}
+.kw-fillwin .kw-lobby,
+.kw-fillwin .kw-knock {
+  margin: auto; /* centre the join / knock card in the big empty window */
+  width: min(360px, 92%);
+}
+
+/* Touch vs mouse: the corner-drag grip is precise with a mouse but fiddly with a finger, so
+   on coarse pointers hide it and surface the one-tap full-screen toggle instead; on a fine
+   pointer (mouse) do the reverse. (The room window has no internal handles — it fills its
+   OS/browser window and is resized natively.) */
+@media (pointer: coarse) {
+  .kw-rsz {
+    display: none;
+  }
+}
+@media (pointer: fine) {
+  .kw-fs {
+    display: none;
+  }
+}
+
+/* Pay requests — an incoming "pay me" card (link + QR). Kibitz only transports the
+   link; the money moves on the provider, never through us. */
+.kw-pay {
+  position: relative;
+  margin: 8px;
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  text-align: center;
+  background: #000;
+  border: 1px solid color-mix(in srgb, var(--kw-accent, #3fb950) 50%, transparent);
+  border-radius: 10px;
+}
+.kw-pay-x {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8b949e;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.kw-pay-head {
+  font-size: 0.82rem;
+  color: #e6edf3;
+}
+.kw-pay-note {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #7ee2a8;
+}
+.kw-pay-link {
+  max-width: 100%;
+  font-size: 0.72rem;
+  color: #8fd3b0;
+  word-break: break-all;
+  text-decoration: underline;
+}
+.kw-pay-qr {
+  width: 132px;
+  height: 132px;
+  padding: 8px;
+  background: #fff;
+  border-radius: 10px;
+}
+.kw-pay-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Invite panel: a centred card with a scannable QR of the room link (+ a copy fallback), opened from
+   the 🔗 button. Floats over the call so it's reachable on the fill-screen room window. */
+.kw-invitepanel {
+  position: absolute;
+  z-index: 8;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(320px, 88%);
+  padding: 14px 18px 18px;
+  border-radius: 16px;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
+  text-align: center;
+}
+.kw-invite-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #e6edf3;
+}
+/* SVG icons (replacing the old emoji) sit inline with the label, and keep their size next to the text. */
+.kw-invite-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.kw-invite-title svg,
+.kw-invite-share .kw-invite-copy svg {
+  flex: 0 0 auto;
+}
+.kw-invite-x {
+  flex: 0 0 auto;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e6edf3;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.kw-invite-qr {
+  width: 216px;
+  height: 216px;
+  padding: 12px;
+  background: #fff;
+  border-radius: 12px;
+}
+.kw-invite-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.kw-invite-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #8b949e;
+  line-height: 1.35;
+}
+.kw-invite-copy {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #161b22;
+  color: #e6edf3;
+  border-radius: 9px;
+  padding: 9px 14px;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.kw-invite-copy.done {
+  color: #7ee2a8;
+  border-color: color-mix(in srgb, var(--kw-accent, #3fb950) 50%, transparent);
+}
+/* Send-the-link row under the QR: WhatsApp + native share + copy, wrapping and centered. */
+.kw-invite-share {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  width: 100%;
+}
+.kw-invite-share .kw-invite-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+.kw-invite-copy.wa {
+  background: #25d366;
+  border-color: #25d366;
+  color: #fff;
+}
+.kw-pay-fine {
+  margin: 0;
+  font-size: 0.68rem;
+  color: #8b949e;
+}
+
+/* Pay composer (in the chat pane) + the 💳 trigger in the chat row. */
+.kw-payform {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 0;
+}
+.kw-pay-in {
+  font: inherit;
+  color: #e6edf3;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+.kw-payform-row {
+  display: flex;
+  gap: 6px;
+}
+.kw-pay-send {
+  flex: 1;
+  font: inherit;
+  font-weight: 700;
+  background: var(--kw-accent, #1a7f4e);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+.kw-pay-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.kw-pay-cancel {
+  font: inherit;
+  background: transparent;
+  color: #8b949e;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.kw-pay-err {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #f85149;
+}
+.kw-chat-pay {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #161b22;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 0 8px;
+}
+.kw-chat-pay.active {
+  border-color: var(--kw-accent, #3fb950);
+}
+
+/* Share-an-image / camera buttons — same chip shape as the pay button. */
+.kw-attach-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+/* A FLAT icon button INSIDE the input bubble on the left (transparent, no border of its own — the bubble is the
+   surface). Send (➤) mirrors it on the right. Scoped under .kw-chatrow-input so `background:transparent` beats
+   the `.kw-chatrow button { background: accent }` send-arrow style (which is more specific than a lone class). */
+.kw-chatrow-input .kw-chat-attach {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #e6edf3;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 6px;
+  width: auto; /* override .kw-chatrow button { width: 34px } */
+}
+.kw-chat-attach:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* The ＋ attachment menu (🖼️ Photo · 📷 Camera · 📄 File), popped above the button. */
+.kw-attach-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 168px;
+  padding: 6px;
+  border-radius: 12px;
+  background: #161b22;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+/* Scoped under .kw-chatrow to beat `.kw-chatrow button` (the 34px-wide blue send-arrow style), which
+   otherwise squeezes these into tall blue pills. */
+.kw-chatrow .kw-attach-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%; /* override .kw-chatrow button { width: 34px } */
+  text-align: left;
+  padding: 11px 12px;
+  border: 0;
+  background: transparent; /* override the blue --kw-accent fill */
+  color: #e6edf3; /* override white-on-blue */
+  font: inherit;
+  font-size: 0.95rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.kw-chatrow .kw-attach-menu button:hover {
+  background: #1f2a37;
+}
+
+.tile {
+  position: relative;
+  /* Make every tile a SIZE container so the avatar emoji + name can scale with the tile (cqmin units
+     below). Safe: a tile's size always comes from its grid track / explicit px / aspect-ratio, never
+     from its contents, so size containment changes nothing about layout. `.tile` is already
+     position:relative, so it was already the containing block for the abs-positioned tag/buttons. */
+  container-type: size;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  /* A clearly visible box: the widget floats over arbitrary (often bright)
+     pages, where the original app's faint felt-table border would disappear. */
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 10px;
+  overflow: hidden;
+  min-height: 0;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+.tile video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* A tile that declares meta.tileFit:'contain' (or a read-only agent) shows SYNTHETIC content — a painted
+   image, later a clip — not a camera. Fit the WHOLE frame (letterboxed) so a non-tile-aspect image isn't
+   cropped. (A human camera still uses `cover`.) */
+.tile.tile--fit video {
+  object-fit: contain;
+  background: #0d1117;
+}
+.tile.self video {
+  transform: scaleX(-1);
+}
+.tile.self video.no-mirror {
+  transform: none; /* rear camera shows as-is */
+}
+.tile-flip {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.45);
+  color: #e6edf3;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.kw-strip .tile-flip {
+  display: none; /* 60px tiles are too small for an overlay button */
+}
+/* Per-tile overlay button: host remove (top-left). Shares the flip button's chrome;
+   subtle until hovered so it doesn't clutter. */
+.tile-remove {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.45);
+  color: #e6edf3;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.tile-remove:hover {
+  opacity: 1;
+  border-color: rgba(248, 81, 73, 0.7);
+}
+.kw-strip .tile-remove {
+  display: none; /* the compact strip tiles are too small for overlay buttons */
+}
+.tag-host {
+  color: #7ee2a8;
+  font-weight: 700;
+}
+/* "🤖 AI" chip on an agent's tile — shown to EVERYONE so it's never ambiguous that a
+   participant is an AI agent (the host also gets the consent panel). */
+.tag-agent {
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: rgba(88, 197, 255, 0.18);
+  color: #9cd7ff;
+  font-size: 0.72em;
+  font-weight: 700;
+  vertical-align: middle;
+}
+/* Direct-vs-relay dot in the tile tag (diagnostic): green = P2P, amber = relayed. */
+.tag-conn {
+  margin-left: 4px;
+  font-size: 0.7em;
+  vertical-align: middle;
+}
+.tag-conn.direct {
+  color: var(--kw-accent, #3fb950);
+}
+.tag-conn.relay {
+  color: #d29922;
+}
+/* Verified-identity ✓ in the tile tag — a DISTINCT signal from the 🛡️ safety code
+   (this says "really this person", the shield says "no one in the middle"). */
+.tag-id {
+  margin-left: 4px;
+  color: #58c5ff;
+  font-weight: 700;
+  vertical-align: middle;
+}
+/* CLAIMED (unverified) identity — deliberately WEAKER than the verified .tag-id: muted, not bold, a dotted
+   underline, no check. The one hard rule: a claim must never read as the verified ✓. (docs/claimed-identity.md) */
+.tag-claim {
+  margin-left: 4px;
+  color: #8b949e;
+  font-weight: 400;
+  font-size: 0.85em;
+  text-decoration: underline dotted #8b949e;
+  text-underline-offset: 2px;
+  vertical-align: middle;
+}
+.tag-claim.guest {
+  text-decoration: none;
+  opacity: 0.85;
+  font-style: italic;
+}
+/* "Claims to be …" in the per-peer Verify panel — muted, clearly weaker than the verified line. */
+.kw-verify-claim {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  color: #8b949e;
+}
+.tile.self {
+  border-color: color-mix(in srgb, var(--kw-accent, #3fb950) 55%, transparent);
+}
+.tile.speaking {
+  box-shadow:
+    inset 0 0 0 2px var(--kw-accent, #3fb950),
+    0 0 10px color-mix(in srgb, var(--kw-accent, #3fb950) 40%, transparent);
+}
+.face {
+  /* Scale the avatar emoji / initial with the TILE, not a fixed size — so it fills a big solo/gallery
+     tile and shrinks in a small one. cqmin = % of the tile's smaller side. The plain 2.6rem is the
+     fallback for browsers without container queries (the clamp line is then ignored as invalid).
+     The filmstrip / strip / speaker-stage faces keep their own (more specific) sizes. */
+  font-size: 2.6rem;
+  font-size: clamp(1.4rem, 40cqmin, 9rem);
+  line-height: 1;
+}
+.tile.speaking .face {
+  animation: kw-bounce 0.7s ease-in-out infinite;
+}
+/* Busy/working CENTERPIECE (voice-only tile): the activity emoji REPLACES the avatar — animated, with the
+   label beneath — so an agent's "thinking / composing / …" is the clear focus, immune to the stage menu
+   that buried the old top-left pill. The emoji inherits .face's tile-scaled size; the label stays small. */
+.tile-busy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.tile-busy-emoji {
+  display: inline-flex;
+  font-size: 1.5em; /* 1.5× the tile-scaled .face size — the working/engaged emoji reads bigger than the avatar */
+  animation: kw-busy-bob 1.7s ease-in-out infinite;
+}
+.tile-busy-label {
+  font-size: clamp(0.62rem, 12cqmin, 1.5rem); /* small + tile-scaled — NOT the huge .face avatar size */
+  line-height: 1.2;
+  font-weight: 700;
+  color: #f5d77a; /* amber, matching the busy ring */
+  letter-spacing: 0.01em;
+}
+@keyframes kw-busy-bob {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.9; }
+  50% { transform: translateY(-7%) scale(1.06); opacity: 1; }
+}
+/* The "doing X" pill on a busy tile (meta.activity → 🔎 searching / 📖 reading / 🎵 composing …). */
+.tile-activity {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100% - 12px);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f5d77a;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+/* Dormant-agent engagement lamp — a faint 💤 in the top-right (the activity pill owns the top-left). */
+.tile-zzz {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0.65;
+  pointer-events: none;
+}
+/* Stage/speaker view: the top is taken by the agent's stage action-menu overlay (.kw-agentbar--stage),
+   which buried this top-left pill (only a sliver showed). Pin it BOTTOM-RIGHT there — the name tag owns
+   bottom-left, the menu owns the top — so the agent's thinking/composing status stays visible. The grid
+   view (no top menu over each small tile) keeps the default top-left. */
+.kw-stage .tile-activity {
+  top: auto;
+  bottom: 6px;
+  left: auto;
+  right: 6px;
+}
+/* "Thinking / working" — a slow AMBER ring pulse, distinct from the green speaking glow. Driven by a peer's
+   roster meta.busy (e.g. an AI agent set it while it reasons + runs tools); cleared when it speaks. The emoji
+   itself stays put (no bounce) so the avatar identity is preserved. */
+.tile.busy {
+  animation: kw-busy-pulse 1.4s ease-in-out infinite;
+}
+@keyframes kw-busy-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 2px color-mix(in srgb, #eab308 35%, transparent),
+      0 0 6px color-mix(in srgb, #eab308 22%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 2px color-mix(in srgb, #eab308 85%, transparent),
+      0 0 16px color-mix(in srgb, #eab308 55%, transparent);
+  }
+}
+/* OPEN FOLLOW-UP WINDOW ("your turn", meta.activity==='listening'): a distinct CYAN "breathing" glow —
+   BRIGHTER + slower/calmer than the amber working pulse, and not the green speaking glow — so it clearly
+   reads "I'm waiting for you, go ahead" rather than "busy". The 👂 emoji + label go cyan to match. More
+   specific than .tile.busy, so it overrides the amber pulse + amber label. */
+.tile.busy.awaiting {
+  animation: kw-await-pulse 1.9s ease-in-out infinite;
+}
+.tile.busy.awaiting .tile-busy-label,
+.tile.busy.awaiting .tile-activity {
+  color: #5eead4;
+}
+@keyframes kw-await-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 2px color-mix(in srgb, #2dd4bf 55%, transparent),
+      0 0 10px color-mix(in srgb, #2dd4bf 34%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 3px color-mix(in srgb, #2dd4bf 100%, transparent),
+      0 0 26px color-mix(in srgb, #2dd4bf 75%, transparent);
+  }
+}
+/* Vendored Twemoji avatar SVG (EmojiAvatar) — sized to 1em so it scales with whatever font-size the
+   surrounding element sets (the tile face's cqmin clamp, the header/picker button, the verify row). */
+.kw-emoji {
+  display: inline-flex;
+  line-height: 1;
+}
+.kw-emoji svg {
+  width: 1em;
+  height: 1em;
+  display: block;
+  vertical-align: -0.125em;
+}
+@keyframes kw-bounce {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+  }
+  35% {
+    transform: scale(1.22) translateY(-3px);
+  }
+}
+.tag {
+  position: absolute;
+  left: 5px;
+  bottom: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  /* The name label grows with the tile too, but stays bounded so it never dominates — and the clamp
+     MIN equals the old fixed size, so small tiles (filmstrip / strip) read exactly as before; only big
+     tiles get a larger, more legible name. Fallback line first for no-container-query browsers. */
+  font-size: 0.62rem;
+  font-size: clamp(0.62rem, 7cqmin, 1.05rem);
+  background: rgba(0, 0, 0, 0.55);
+  color: #e6edf3;
+}
+.mic-wave {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.mic-wave.on {
+  opacity: 1;
+}
+.mic-wave span {
+  width: 2px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--kw-accent, #3fb950);
+  transform: scaleY(0.14);
+  transform-origin: bottom center;
+  will-change: transform;
+}
+
+/* Compact "strip": the tiles become a single horizontal row (a filmstrip) — TOP-anchored and centred,
+   scrollable when they overflow. The panel keeps the SAME shape as the Speaker view (top bar + floating
+   bottom bar): the tile area keeps its normal height so the bottom bar overlays the empty space BELOW the
+   row, not the tiles, and the row reads as a strip across the top rather than a lone tile in the middle. */
+.kw-strip .kw-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: center;
+  /* corner: the tile area is JUST the row of tiles (auto height). The control bar renders in-flow right
+     below it (see .kw-strip .kw-controlbar-float → position:static), so the bar always sits directly
+     under the tiles regardless of their size. */
+  height: auto;
+  flex: 0 0 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 6px;
+  gap: 6px;
+}
+/* Big surfaces fill the freed space (the in-flow bottom bar sits below, so the row just tops the area). */
+.kw-full.kw-strip .kw-grid,
+.kw-fillwin.kw-strip .kw-grid,
+.kw-pip.kw-strip .kw-grid {
+  flex: 1;
+  height: auto;
+}
+/* Strip tiles scale with the box (cqi against the stagewrap container below) — stretch the panel and the
+   row of tiles grows with it instead of staying a fixed 60px. */
+.kw-strip .tile {
+  width: clamp(56px, 18cqi, 168px);
+  height: clamp(56px, 18cqi, 168px);
+  flex: 0 0 auto;
+}
+/* Strip: render the (normally floating) bar IN-FLOW directly below the tile row, not as a bottom overlay
+   over an empty box. Keeps the .kw-controlbar-float class so the icon-scaling + container still apply. */
+.kw-strip .kw-controlbar-float {
+  position: static;
+  background: #000;
+  padding: 10px;
+}
+/* …and keep it visible in strip even when the corner panel's chrome auto-hides (it's in-flow now, so
+   fading it would just leave a blank gap below the tiles). */
+.kw-strip.kw-chromehidden .kw-controlbar-float {
+  opacity: 1;
+  pointer-events: auto;
+}
+.kw-strip .face {
+  font-size: clamp(0.85rem, 40cqmin, 2.4rem);
+}
+.kw-strip .tag {
+  left: 3px;
+  bottom: 3px;
+  padding: 0 4px;
+  font-size: 0.52rem;
+  max-width: calc(100% - 6px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ghost mode: chrome vanishes, the tile area is translucent AND click-through
+   so the page underneath stays usable; speakers pop to full opacity. Only the
+   header + ops (+ unlock) stay tappable. */
+.kw-panel.kw-ghostmode {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+.kw-ghostmode .kw-head,
+.kw-ghostmode .kw-oprow,
+.kw-ghostmode .kw-avatars,
+.kw-ghostmode .kw-unlock,
+.kw-ghostmode .kw-rsz,
+.kw-ghostmode .kw-share-nudge,
+.kw-ghostmode .kw-controlbar-float,
+.kw-ghostmode .kw-controlbar,
+.kw-ghostmode .kw-viewdots,
+.kw-ghostmode .tile-flip {
+  pointer-events: auto; /* controls stay tappable inside the click-through area */
+}
+/* …but when the floating bar has auto-hidden, let taps fall THROUGH it to the page below — it's
+   invisible, so it must not eat clicks (and a tap elsewhere still reveals it via the host listener). */
+.kw-ghostmode.kw-chromehidden .kw-controlbar-float {
+  pointer-events: none;
+}
+.kw-ghostmode .kw-grid {
+  background: transparent;
+  pointer-events: none;
+}
+.kw-ghostmode .tile {
+  background: transparent;
+  border-color: transparent;
+  /* Speakers pop to full opacity — FADE that change so it doesn't hard-flash between
+     the set transparency and full opacity each time audio crosses the talk threshold. */
+  transition: opacity 0.32s ease;
+}
+.kw-ghostmode .tile:not(.speaking) {
+  opacity: var(--kw-ghost-op, 0.5);
+}
+/* Your OWN tile keeps the ghost transparency even while you talk. The "speaker pops to full opacity"
+   highlight is for spotting who ELSE is speaking; popping your own face just makes a SOLO call go opaque
+   the moment you talk (you're the only — hence always the — active speaker). */
+.kw-ghostmode .tile.self {
+  opacity: var(--kw-ghost-op, 0.5);
+}
+/* The speaker STAGE (the default view features ONE person big — e.g. the other party in a 1-on-1) has a
+   solid BLACK backdrop. Without this it read as an opaque block over the page in ghost mode, while the
+   grid/gallery tiles were already see-through. Drop the black on the stage, its tile, and a letterboxed
+   shared video so the featured person's avatar/video floats over the page like every other tile. */
+.kw-ghostmode .kw-stage,
+.kw-ghostmode .kw-stage .tile,
+.kw-ghostmode .kw-stage .tile.stage video {
+  background: transparent;
+}
+
+/* Landing demo: the panel floats ~20% transparent so it reads as "hanging over"
+   the page right away (before you join); pops to full opacity on hover so it
+   stays usable. */
+.kw-panel.kw-preview {
+  opacity: 0.8;
+  transition: opacity 0.18s ease;
+}
+.kw-panel.kw-preview:hover {
+  opacity: 1;
+}
+
+/* Pop-out (Document PiP): the panel IS the window — full-bleed, OS-managed. */
+.kw-panel.kw-pip {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.kw-pip .kw-head {
+  cursor: default; /* the OS titlebar drags the window, not us */
+}
+.kw-pip .kw-grid,
+.kw-pip .kw-chat {
+  flex: 1;
+  height: auto;
+}
+/* Strip inside the pop-out: keep the grid its compact strip height instead of
+   growing to fill the window, so the big tile box actually collapses. */
+.kw-pip.kw-strip .kw-grid {
+  flex: 0 0 auto;
+}
+
+/* Chat — replaces the tile view (the grid stays mounted, just hidden). */
+.kw-chat {
+  display: flex;
+  flex-direction: column;
+  height: 240px;
+  background: #000;
+}
+.kw-msgs {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* don't chain to the host page (no pull-to-refresh) */
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kw-chat-hint {
+  margin: auto 8px;
+  color: #8b949e;
+  font-size: 0.75rem;
+  text-align: center;
+}
+.kw-msg {
+  max-width: 85%;
+  align-self: flex-start;
+  /* OTHERS' bubbles are NEUTRAL — the same fill + border as a face tile, so they read as a neutral bubble on the
+     all-black panel (NOT accented). Only MY OWN (.self) bubbles carry the brand accent (below). */
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 10px;
+  padding: 4px 9px;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+/* MY OWN bubbles: the brand ACCENT (var(--kw-accent), e.g. blue on this instance) so it clearly reads as "me",
+   right-aligned and distinct from the neutral others. The accent fill carries the colour; tint the border to
+   the accent too so the neutral tile border doesn't mute it. */
+.kw-msg.self {
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--kw-accent, #3fb950) 32%, transparent);
+  border-color: color-mix(in srgb, var(--kw-accent, #3fb950) 45%, transparent);
+}
+/* A private (directed) message — tinted + a dashed edge so it reads as 1:1. */
+.kw-msg.dm {
+  background: rgba(167, 139, 250, 0.16);
+  border: 1px dashed rgba(167, 139, 250, 0.55);
+}
+.kw-msg.self.dm {
+  background: rgba(167, 139, 250, 0.26);
+}
+.kw-msg-priv {
+  color: #b9a8f7;
+}
+.kw-msg-name {
+  display: block;
+  font-size: 0.62rem;
+  color: #8b949e;
+}
+/* Per-message direction: the bubble's text/name carry dir="auto" (ChatMessage.tsx) so the browser detects RTL
+   (Hebrew) vs LTR (English) from each message's own content. `text-align: start` then aligns each message to its own
+   side (Hebrew → right, English → left), and the bidi algorithm places punctuation (— " . ) correctly. Block so the
+   alignment applies to the whole line, not just inline flow. */
+.kw-msg-text {
+  display: block;
+  text-align: start;
+}
+/* A shared image rendered inline in the chat — a tap-to-open thumbnail. */
+/* One width for ALL chat media — the wrap is a fixed width; video/audio/file fill it; an image caps at it. */
+.kw-msg-img-wrap {
+  display: inline-block;
+  width: min(300px, 100%);
+}
+.kw-msg-img {
+  display: block;
+  margin-top: 3px;
+  line-height: 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.kw-msg-vid {
+  display: block;
+  margin-top: 3px;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #0d1117;
+}
+.kw-msg-aud {
+  display: block;
+  margin-top: 3px;
+  width: 100%;
+  height: 60px; /* a slim media player — a <video> with no picture, so just its control bar */
+  background: #0d1117;
+  border-radius: 8px;
+}
+/* A file rendered like a media bubble: a box + a Save action below (hover/touch, like image/video/audio). */
+.kw-msg-filebox {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 3px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.85rem;
+}
+/* The presenter's BIG control surface for a STAGED video — a centered <video controls> (play/pause/seek/mute)
+   over the stage; its captureStream is what peers see on the stage. Must always render while a video is staged
+   (it's what bootstraps the share), so it's an overlay rather than embedded in the stage element. */
+.kw-staged-vid {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 52px 12px 76px; /* clear the header (top) + the control bar (bottom) so both stay reachable */
+  pointer-events: none; /* the empty area passes taps through (header/stage behind); the video + toggle opt back in */
+}
+.kw-staged-vid video {
+  pointer-events: auto;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 60px; /* a staged AUDIO file has no picture → keep the control bar visible */
+  border-radius: 10px;
+  background: #000;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+/* The staged-video control overlay is a full-PANEL absolute layer (inset:0). With chat OPEN (chatsplit) that
+   centres the video over the whole panel — so it floats across the stage/chat boundary, over the chat. Confine
+   it to the STAGE region: portrait → the top stage band; landscape → left of the chat column. */
+@media (orientation: portrait) {
+  .kw-chatsplit .kw-staged-vid,
+  .kw-chatsplit .kw-stage-widget {
+    bottom: auto;
+    height: 52%; /* ≈ the stage row of the chatsplit grid (1.2fr : 1fr) — keeps the video/widget off the chat below */
+    padding-bottom: 10px;
+  }
+}
+@media (orientation: landscape) {
+  /* Fill the STAGE region: clear the chat column on the right and the faces STRIP along the bottom (the faces are
+     a bottom strip now, NOT a right column), and drop the header/control-bar padding — both live in the chat
+     column in chatsplit, so the stage region has neither above/below it. */
+  .kw-chatsplit .kw-staged-vid,
+  .kw-chatsplit .kw-stage-widget {
+    right: var(--kw-chatw);
+    bottom: clamp(100px, 13vw, 220px);
+    padding: 8px 10px;
+  }
+}
+/* A bounded interactive WIDGET (a map) on the shared stage — a full-bleed overlay every peer renders from the
+   same instance, INTERACTIVE (unlike a screen-share video). Clears the header + control bar so both stay reachable. */
+.kw-stage-widget {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 52px 12px 76px;
+  /* SOLID dark stage (matches .kw-stage's #000) so the staged widget OWNS the stage region like a screen-share,
+     instead of being a transparent overlay through which the speaker/gallery tile bleeds. The bar + body opt
+     back into pointer-events below; only the bar/body padding area is inert (and now opaque, not see-through). */
+  background: #000;
+  pointer-events: auto;
+}
+.kw-stage-widget-bar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kw-stage-widget-title {
+  font: 600 0.85rem/1.3 system-ui, sans-serif;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 4px 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kw-stage-widget-body {
+  pointer-events: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0; /* let a staged widget shrink to the box (flex children default to min-content) */
+  display: flex;
+  justify-content: center;
+  align-items: center; /* a SMALL widget (e.g. a 3-row table) sits CENTERED on the stage, not top-aligned */
+  overflow: auto; /* a genuinely larger widget scrolls within the stage box instead of overflowing it */
+}
+/* The widget itself fills the stage box but never exceeds it (it scrolls its own content). */
+.kw-stage-widget-body > * {
+  min-width: 0;
+  max-width: 100%;
+}
+/* kbz.doc typography (the renderer sets sanitized HTML; this just styles the known-safe tags). */
+.kw-doc-body h3 { font-size: 1.15em; font-weight: 800; margin: 0.6em 0 0.3em; }
+.kw-doc-body h4 { font-size: 1.05em; font-weight: 700; margin: 0.6em 0 0.3em; }
+.kw-doc-body h5 { font-size: 1em; font-weight: 700; margin: 0.5em 0 0.25em; }
+.kw-doc-body p { margin: 0 0 0.7em; }
+.kw-doc-body ul, .kw-doc-body ol { margin: 0 0 0.7em; padding-left: 1.4em; }
+.kw-doc-body li { margin: 0.15em 0; }
+.kw-doc-body a { color: #1971c2; }
+.kw-doc-body code { background: #f1f4f9; border-radius: 4px; padding: 1px 5px; font: 0.92em/1.4 ui-monospace, Menlo, monospace; }
+.kw-doc-body pre { background: #0f1726; color: #e6edf7; border-radius: 8px; padding: 12px; overflow: auto; margin: 0 0 0.7em; }
+.kw-doc-body pre code { background: none; padding: 0; color: inherit; }
+.kw-doc-body blockquote { margin: 0 0 0.7em; padding: 4px 0 4px 12px; border-left: 3px solid #c7d2e3; color: #4a5568; }
+.kw-doc-body hr { border: none; border-top: 1px solid #e3e8f0; margin: 0.8em 0; }
+.kw-doc-body :first-child { margin-top: 0; }
+.kw-doc-body :last-child { margin-bottom: 0; }
+.kw-doc-body .kw-doc-host { font-size: 0.82em; color: #7a8699; } /* shows a link's real destination host */
+/* Presenter's suppress toggle (let viewers play/pause, or take sole control). */
+.kw-staged-ctl {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 0.7rem; /* subtler — a small overlay chip on the stage, not a prominent pill */
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.92);
+  opacity: 0.9;
+  cursor: pointer;
+}
+.kw-staged-ctl:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+/* Viewer's play/pause for a presenter's staged clip (bottom-center of the stage). */
+/* ── Staged-video transport bar (custom + SYNCED — the SAME for every participant; see StageVideoBar.tsx) ──────
+   The presenter holds the master <video>; viewers relay over the ctl channel. Both render this identical bar. */
+/* The red Stop, pinned top-left of the stage. pointer-events:auto so it's hittable over the pass-through overlay. */
+.kw-stage-stop {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 9;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #da3633; /* a deeper red than the muted-mic #f85149 — reads as a real Stop */
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.kw-stage-stop:hover {
+  background: #f85149;
+}
+.kw-stage-stop.armed {
+  background: #f85149;
+  box-shadow: 0 0 0 2px rgba(248, 81, 73, 0.5);
+}
+/* The transport — play/pause + scrub + time — along the bottom of the stage, like a desktop player. */
+.kw-stagebar {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 9;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+}
+.kw-stagebar-btn {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  font-size: 1.05rem;
+  cursor: pointer;
+}
+.kw-stagebar-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.kw-stagebar-scrub {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--kw-accent, #3fb950);
+  cursor: pointer;
+}
+.kw-stagebar-scrub:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.kw-stagebar-time {
+  flex: 0 0 auto;
+  color: #e6edf3;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* The pen/ink toolbar portals here — a row directly ABOVE the transport bar (chat-layout style), always visible
+   (never auto-hidden). The empty track passes taps through; the .kw-ink-bar inside opts back in. */
+.kw-stage-inkslot {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 58px;
+  z-index: 9;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+}
+.kw-stage-inkslot .kw-ink-bar {
+  position: static;
+  margin: 0;
+  pointer-events: auto;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+/* The self-presenter's staged-clip ink toolbar lives HERE — inside .kw-stage, a row above the transport, same spot as
+   .kw-stage-inkslot but at z:11 so it (and its colour popup) sits ABOVE the ink canvas (z:10, bumped so our ink paints
+   over the z:8 overlay video). A toolbar inside the overlay is z:8 → under the active canvas → its taps get eaten (you
+   can't re-press the pen or pick a colour). The empty slot passes taps through; only the bar itself opts back in. */
+.kw-stage-inktop {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 58px;
+  z-index: 11;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+}
+.kw-stage-inktop .kw-ink-bar {
+  position: static;
+  margin: 0;
+  pointer-events: auto;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+/* Stage / Save sit UNDER the media. On TOUCH (no hover) they're always shown — tap them directly. On a POINTER
+   device they reveal on hover + auto-hide on leave (so the chat stays clean). */
+.kw-msg-img-acts {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+/* Widget actions (Stage / 💾 Save / Dismiss) — ALWAYS shown, NOT hover-revealed like the image actions: a widget
+   card has no .kw-msg-img-wrap to hover (so the hover rule below never matched), and its controls are part of the
+   card. Separate class so the pointer-device `display:none` on .kw-msg-img-acts never applies here. */
+.kw-msg-widget-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .kw-msg-img-acts {
+    display: none;
+  }
+  .kw-msg-img-wrap:hover .kw-msg-img-acts {
+    display: flex;
+  }
+}
+.kw-msg-img-acts button,
+.kw-msg-img-acts a {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+.kw-msg-img-acts button:hover,
+.kw-msg-img-acts a:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.kw-msg-img img {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  height: auto;
+  width: auto;
+  object-fit: contain;
+  background: #0d1117;
+}
+/* A file/transfer attachment chip (in-flight progress or a finished Save link). */
+.kw-att {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+  font-size: 0.8rem;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  max-width: 240px;
+}
+.kw-att-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.kw-att-size {
+  color: #8b949e;
+}
+.kw-att-failed {
+  color: #f0883e;
+}
+/* The file chip is the SAME width as video/audio. */
+.kw-att-file {
+  width: min(260px, 100%);
+  box-sizing: border-box;
+}
+/* Its Save reveals on hover (pointer) / is always shown on touch — like the media bubbles. */
+.kw-att-save {
+  display: inline;
+  color: var(--kw-accent, #3fb950);
+  font-weight: 600;
+  text-decoration: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .kw-att-save {
+    display: none;
+  }
+  .kw-att-file:hover .kw-att-save {
+    display: inline;
+  }
+}
+/* Accept/decline buttons on a >1GB pull-download offer chip. */
+.kw-att-accept {
+  color: var(--kw-accent, #3fb950);
+  font-weight: 600;
+  background: none;
+  border: 1px solid var(--kw-accent, #3fb950);
+  border-radius: 6px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.kw-att-decline {
+  color: #8b949e;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 1px 4px;
+}
+/* ✕ to cancel an in-flight transfer (either side), sat beside the % on the progress chip. */
+.kw-att-cancel {
+  color: #8b949e;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 0.85em;
+  line-height: 1;
+}
+.kw-att-cancel:hover {
+  color: #f85149;
+}
+/* A thin progress bar driven by the inline --p custom property (0%..100%). */
+.kw-att-bar {
+  display: block;
+  flex: 1 0 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--kw-accent, #3fb950) var(--p, 0%), rgba(255, 255, 255, 0.12) var(--p, 0%));
+}
+/* Recipient picker — "To: Everyone ▾ / a person" above the composer. */
+.kw-to-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px 0;
+  font-size: 0.72rem;
+  color: #8b949e;
+}
+.kw-to {
+  flex: 0 1 auto;
+  max-width: 140px;
+  font: inherit;
+  font-size: 0.74rem;
+  color: #e6edf3;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  padding: 3px 6px;
+}
+.kw-to-priv {
+  color: #b9a8f7;
+  font-weight: 700;
+}
+/* Recipient chip folded INTO the composer (was a separate "To:" row) — compact, with a private accent when DMing. */
+.kw-to-chip {
+  flex: 0 0 auto;
+  align-self: center;
+  max-width: 108px;
+}
+.kw-to-chip--priv {
+  border-color: rgba(185, 168, 247, 0.6);
+  color: #b9a8f7;
+}
+.kw-chatrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 0;
+}
+/* Composer is two groups: tools (recipient · pay · attach) and the input+send. In a wide chat they sit
+   side-by-side (the input group flexes); in chatsplit the row becomes a column so tools stack ABOVE input. */
+.kw-chatrow-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* The input is ONE bubble: the ROW carries the rounded bg + border (the black-theme input look); ＋ sits inside
+   on the left, the text input fills the middle (transparent), ➤ send on the right. So ＋ and ➤ are always inside
+   the bubble, every state/orientation. No overflow:hidden — the ＋ attach menu pops UP out of the bubble. */
+.kw-chatrow-input {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 0 4px;
+}
+.kw-chatsplit .kw-chatrow {
+  flex-direction: column;
+  align-items: stretch;
+}
+.kw-chatrow input {
+  flex: 1;
+  min-width: 0; /* let it shrink inside the narrow chat column instead of forcing the row wider */
+  font: inherit;
+  font-size: 0.85rem;
+  color: #e6edf3;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 6px 9px;
+}
+/* The text input now lives INSIDE the .kw-chatrow-input bubble — the bubble owns the bg/border, so the input is
+   transparent + borderless and just fills the middle. */
+.kw-chatrow-input > input {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 6px 4px;
+  /* With dir="auto" on the input, the browser detects the typed language: Hebrew/Arabic flips to RTL and aligns
+     right, English stays LTR/left — mirrors the per-message bubble direction (ChatMessage dir="auto"). */
+  text-align: start;
+}
+/* No blue focus ring on the message input — the bubble IS the visible boundary; the browser default (a thick
+   blue rectangle, especially on iOS) looked like a stray box inside the composer. */
+.kw-chatrow-input > input:focus,
+.kw-chatrow-input > input:focus-visible {
+  outline: none;
+}
+.kw-chatrow button {
+  border: 0;
+  background: var(--kw-accent, #1a7f4e);
+  color: #fff;
+  border-radius: 10px;
+  width: 34px;
+  cursor: pointer;
+}
+.kw-chatrow button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* The ➤ send is a FLAT icon button inside the bubble on the right (transparent, no accent fill, no border) —
+   matches the ＋ on the left. (The attach MENU items, also .kw-chatrow button, keep their own override above.) */
+.kw-chatrow-input > button[type='submit'] {
+  background: transparent;
+  color: var(--kw-accent, #3fb950);
+  width: auto;
+  padding: 0 6px;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+/* In the full-window room the composer sits at the screen edge — inset it past the iPhone home indicator +
+   rounded display corners (safe area) so the end buttons (💳 / ＋ / send) aren't clipped. Scoped to fill mode
+   so the embedded floating widget (not at the screen edge) keeps its plain padding. */
+.kw-fillwin .kw-chatrow {
+  padding-left: max(8px, env(safe-area-inset-left));
+  padding-right: max(8px, env(safe-area-inset-right));
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+}
+.kw-badge-sm {
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 0.6rem;
+}
+
+/* ── Split chat (big surfaces) ─────────────────────────────────────────────────────────────────
+   Wraps the stage + verify + chat. Default: a plain column (on the embedded panel, chat/verify still
+   take it over — the stage goes display:none in JS). On a BIG SURFACE with chat open the panel gets
+   .kw-chatsplit and the stage STAYS visible, sharing the space with the chat: portrait stacks a tiles
+   strip over the chat; landscape/desktop puts them side by side. The control bar stays put below. */
+.kw-bodysplit {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.kw-fillwin .kw-bodysplit,
+.kw-full .kw-bodysplit,
+.kw-pip .kw-bodysplit {
+  flex: 1;
+}
+/* Portrait: tiles strip on top, chat fills the rest below. */
+@media (orientation: portrait) {
+  .kw-chatsplit .kw-stagewrap {
+    flex: 0 0 34vh;
+    min-height: 0;
+    overflow: hidden;
+    margin-bottom: 10px; /* breathing room between the tiles strip and the chat below it */
+  }
+  .kw-chatsplit .kw-stage {
+    max-height: 34vh;
+  }
+  .kw-chatsplit .kw-chat {
+    flex: 1;
+    height: auto;
+  }
+
+  /* …UNLESS a screen is being shared / a speaker is on the stage (a .kw-stage + a .kw-side face
+     column exist). The plain stack above crushes the shared screen AND its face strip into one 34vh
+     band — unreadable on a phone. Instead lay the body out as a grid: the shared screen spans a tall
+     full-width row on top, and below it the chat takes the wide left while the video tiles stack as a
+     narrow column down the right. We flatten the stagewrap (display:contents) so its stage + faces
+     become grid items beside the chat WITHOUT moving them in the DOM — re-parenting the tiles would
+     unmount their <video>/<audio> sinks and drop the call mid-chat. */
+  .kw-chatsplit .kw-bodysplit:has(.kw-side) {
+    display: grid;
+    /* minmax(0, …) so the chat column can shrink BELOW its content's min-content — otherwise the composer's
+       width forces the 1fr track to grow and shoves the tiles column off-screen (trimmed tiles + composer
+       spilling over the rail). The tiles column keeps its clamp width. */
+    grid-template-columns: minmax(0, 1fr) clamp(66px, 24vw, 104px);
+    /* rows: shared screen · (host agent-consent bar, 0 when absent) · chat + tiles */
+    grid-template-rows: minmax(0, 1.2fr) auto minmax(0, 1fr);
+    min-height: 0;
+  }
+  .kw-chatsplit .kw-bodysplit:has(.kw-side) .kw-stagewrap {
+    display: contents;
+  }
+  .kw-chatsplit .kw-bodysplit:has(.kw-side) .kw-stage {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    max-height: none;
+    min-height: 0;
+    margin-bottom: 10px; /* breathing room between the shared screen and the chat/faces below it */
+  }
+  /* The host's agent-consent bar (the only other direct bodysplit child here) keeps its own full-width
+     row so it never steals a tile/chat cell. */
+  .kw-chatsplit .kw-bodysplit:has(.kw-side) > :not(.kw-stagewrap):not(.kw-chat) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .kw-chatsplit .kw-bodysplit:has(.kw-side) .kw-chat {
+    grid-column: 1;
+    grid-row: 3;
+    height: auto;
+    min-height: 0;
+    min-width: 0;
+    border-top: 0; /* all-black: no divider between the conversation zone and the stage above */
+  }
+  .kw-chatsplit .kw-bodysplit:has(.kw-side) .kw-side {
+    grid-column: 2;
+    grid-row: 3;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    border-top: 0;
+    border-left: 0;
+    background: transparent; /* all-black: the tile AREA is pure black; the TILES are the bubbles on it */
+  }
+  /* Faces become a vertical, scrollable column of compact tiles, TOP-aligned to the chat (not floating
+     mid-rail). The ink toolbar moved to the chat box, so the rail is faces-only. */
+  .kw-chatsplit .kw-bodysplit:has(.kw-side) .kw-side .kw-faces {
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: flex-start; /* top-align the tiles to the top of the chat row */
+    width: auto;
+    gap: 6px;
+    padding: 6px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+  .kw-chatsplit .kw-bodysplit:has(.kw-side) .kw-side .kw-faces .tile {
+    flex: 0 0 auto;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3; /* match the landscape face strip (4/3) — 16/9 reads as a squashed face tile */
+  }
+  /* Flattening the stagewrap would otherwise drop these into the grid as stray cells: the kibitzer
+     audio sinks (invisible but still played while display:none) and the layout page-dots (not used in
+     this split). */
+  .kw-chatsplit .kw-bodysplit:has(.kw-side) .kw-stagewrap > audio,
+  .kw-chatsplit .kw-bodysplit:has(.kw-side) .kw-viewdots {
+    display: none;
+  }
+}
+/* Landscape / desktop: tiles on one side, chat on the other. */
+@media (orientation: landscape) {
+  .kw-chatsplit .kw-bodysplit {
+    flex-direction: row;
+  }
+  .kw-chatsplit .kw-stagewrap {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .kw-chatsplit .kw-stage {
+    max-height: 100%;
+  }
+  .kw-chatsplit .kw-chat {
+    flex: 0 0 var(--kw-chatw);
+    height: auto;
+    border-left: 0;
+  }
+  /* …with a screen shared: stack the stagewrap as the STAGE on top + a horizontal face STRIP underneath
+     (tiles UNDER the shared screen, not a side column). Chat stays on the right. */
+  .kw-chatsplit .kw-stagewrap:has(.kw-side) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .kw-chatsplit .kw-stagewrap:has(.kw-side) .kw-stage {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    max-height: none;
+  }
+  /* The face strip below the stage. :has(.kw-side) keeps specificity above the stale .kw-side[data-faces]
+     staging WIDTHS (3456+) so they can't re-widen it into a column. */
+  .kw-chatsplit .kw-stagewrap:has(.kw-side) .kw-side {
+    flex: 0 0 auto;
+    width: auto;
+    height: clamp(100px, 13vw, 220px);
+    max-height: 42%;
+    overflow: hidden;
+    border-top: 0;
+    background: transparent; /* all-black: the tile AREA is pure black; the TILES are the bubbles on it */
+  }
+  .kw-chatsplit .kw-stagewrap .kw-side .kw-faces {
+    flex: 1 1 auto;
+    flex-direction: row; /* faces laid out across, under the stage */
+    justify-content: flex-start;
+    align-items: stretch;
+    width: auto;
+    height: 100%;
+    padding: 6px;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x;
+  }
+  .kw-chatsplit .kw-stagewrap .kw-side .kw-faces .tile {
+    flex: 0 0 auto;
+    height: 100%;
+    width: auto;
+    aspect-ratio: 4 / 3; /* less rectangular than 16/9 — better for a face/camera tile */
+  }
+}
+
+/* Stage room: in LANDSCAPE chat-split, lift the header + the summon banner out of the panel's column flow and pin
+   them to the TOP of the chat column (right) — so the STAGE (left) reclaims that full height instead of losing it
+   to a full-width top bar. Scoped to landscape chat-split; every other mode keeps the header across the top. */
+@media (orientation: landscape) {
+  .kw-chatsplit .kw-head {
+    position: absolute;
+    inset: 0 0 auto auto; /* top-right corner */
+    width: var(--kw-chatw); /* == the chat column width (.kw-chatsplit .kw-chat flex-basis) */
+    z-index: 9;
+    border-left: 0;
+  }
+  .kw-chatsplit .kw-summon-nudge {
+    position: absolute;
+    inset: 48px 0 auto auto; /* directly under the pinned header, over the chat column */
+    width: var(--kw-chatw);
+    margin: 0; /* drop the inline side margins so it spans the column */
+    border-radius: 0;
+    z-index: 9;
+  }
+  .kw-chatsplit .kw-chat {
+    padding-top: 48px; /* clear the pinned header so the messages start below it */
+  }
+}
+
+/* The pen toolbar parked in the chat box (above the composer) when a screen is shared + chat is open. The
+   colour popup opens upward over the messages; auto-hides on pick. */
+/* The pen/ink tools now sit inline in the composer's tools row (beside the recipient chip + attach), so no
+   row padding — just align with its neighbours. */
+.kw-toolslot-chat {
+  justify-content: flex-start;
+  align-items: center;
+  padding: 0;
+}
+
+/* Verify (safety code / SAS) — replaces the tile view like chat does. The header
+   shield turns amber when a peer's key changed mid-call (warn state). */
+.kw-ic.warn {
+  color: #d29922;
+  border-color: rgba(210, 153, 34, 0.65);
+  animation: kw-pill-knock 1.8s ease-in-out infinite;
+}
+.kw-verify {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px;
+  background: #000;
+}
+.kw-verify-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #e6edf3;
+}
+.kw-verify-intro,
+.kw-verify-empty {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #b6c2cd;
+  line-height: 1.35;
+}
+/* Scope caveat under the verify intro — quieter than the intro. */
+.kw-verify-scope {
+  margin: 6px 0 0;
+  font-size: 0.66rem;
+  color: #8b97a2;
+  line-height: 1.3;
+}
+.kw-verify-empty {
+  text-align: center;
+  padding: 10px 0;
+}
+/* In-call identity sign-in (Verify panel) — lets you prove who you are without
+   leaving and rejoining (the lobby is gone once you're in / auto-rejoined). */
+.kw-verify-signin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border: 1px dashed rgba(88, 197, 255, 0.4);
+  border-radius: 10px;
+}
+.kw-verify-self {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--kw-accent, #1a7f4e) 22%, #fff);
+  background: color-mix(in srgb, var(--kw-accent, #1a7f4e) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kw-accent, #3fb950) 40%, transparent);
+}
+.kw-verify-self strong {
+  color: #e6edf3;
+}
+.kw-verify-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+}
+.kw-verify-row.ok {
+  border-color: color-mix(in srgb, var(--kw-accent, #3fb950) 55%, transparent);
+}
+.kw-verify-row.changed {
+  border-color: rgba(248, 81, 73, 0.6);
+  background: rgba(248, 81, 73, 0.08);
+}
+/* Identity-verified row — the strongest state (who + private line in one). */
+.kw-verify-row.idok {
+  border-color: rgba(88, 197, 255, 0.5);
+  background: rgba(88, 197, 255, 0.07);
+}
+.kw-verify-who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: #e6edf3;
+}
+.kw-verify-tag {
+  margin-left: auto;
+  font-size: 0.66rem;
+  color: #7ee2a8;
+  font-weight: 700;
+}
+/* Verified-identity line in the Verify panel — composes WITH the emoji safety code
+   (kept visually separate: blue for "who", green for "private line"). */
+.kw-verify-id {
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  color: #8b949e;
+  line-height: 1.35;
+}
+.kw-verify-id.ok {
+  color: #9fd6ff;
+}
+.kw-verify-id.ok {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.kw-verify-id.ok strong {
+  color: #e6edf3;
+}
+/* The sub-line under a verified identity — explains why the emoji isn't needed. */
+.kw-verify-idsub {
+  margin: 0;
+  font-size: 0.7rem;
+  color: #8b949e;
+  line-height: 1.35;
+}
+
+/* Lobby identity sign-in (opt-in L3). */
+.kw-id-signin {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+.kw-id-gbtn {
+  min-height: 40px; /* reserve space so the layout doesn't jump when GIS renders */
+  display: flex;
+  justify-content: center;
+}
+.kw-id-hint {
+  margin: 0;
+  font-size: 0.68rem;
+  color: #8b949e;
+  text-align: center;
+}
+.kw-id-emailbtn {
+  font: inherit;
+  font-size: 0.82rem;
+  background: none;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: #c9d1d9;
+  cursor: pointer;
+}
+.kw-id-emailbtn:hover {
+  border-color: #58a6ff;
+}
+.kw-email-host {
+  width: 100%;
+}
+.kw-email {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 240px;
+}
+.kw-email-in {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #30363d;
+  background: #0d1117;
+  color: #e6edf3;
+}
+.kw-email-btn {
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 0;
+  background: var(--kw-accent-strong, #238636);
+  color: #fff;
+  cursor: pointer;
+}
+.kw-email-msg {
+  font-size: 0.72rem;
+  color: #8b949e;
+  text-align: center;
+  min-height: 14px;
+}
+.kw-id-signedin {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--kw-accent, #1a7f4e) 22%, #fff);
+  background: color-mix(in srgb, var(--kw-accent, #1a7f4e) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kw-accent, #3fb950) 40%, transparent);
+}
+.kw-id-check {
+  color: var(--kw-accent, #3fb950);
+  font-weight: 700;
+}
+.kw-verify-warn {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #ffb4ae;
+  line-height: 1.35;
+}
+.kw-verify-code {
+  letter-spacing: 0.18em;
+  font-size: 1.5rem;
+  text-align: center;
+  padding: 6px 0;
+  user-select: all;
+}
+.kw-verify-pending {
+  font-size: 0.74rem;
+  color: #8b949e;
+  text-align: center;
+  padding: 6px 0;
+}
+.kw-verify-btn {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: var(--kw-accent, #1a7f4e);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px;
+  cursor: pointer;
+}
+.kw-verify-btn.ok {
+  background: transparent;
+  color: #7ee2a8;
+  border: 1px solid color-mix(in srgb, var(--kw-accent, #3fb950) 50%, transparent);
+}
+.kw-verify-fine {
+  margin: 2px 0 0;
+  font-size: 0.66rem;
+  color: #8b949e;
+  line-height: 1.35;
+}
+
+/* Lobby */
+.kw-lobby {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  width: 100%;
+  max-width: 420px;
+  margin: auto; /* centre the card in the room window; horizontal-centre when embedded */
+  box-sizing: border-box;
+  flex: 1 1 auto; /* fill the room window so the preview can dominate (Zoom-style) */
+  min-height: 0;
+  overflow-y: auto;
+}
+.kw-lobby input {
+  font: inherit;
+  color: #e6edf3;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+/* A name is required — Join flags an empty field (red outline) and shows an insisting hint below it. */
+.kw-lobby input.kw-name-missing {
+  border-color: #e5484d;
+  box-shadow: 0 0 0 1px #e5484d;
+}
+.kw-name-err {
+  margin: 4px 0 0;
+  color: #e5484d;
+  font-size: 0.82rem;
+  text-align: center;
+}
+/* Zoom-style pre-join: a self-preview tile (your camera or an avatar) with mic/cam controls. */
+.kw-pre {
+  position: relative; /* positioning context for the pre-join invite panel → it centres on the tile, not the whole window */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto; /* the preview dominates the lobby */
+  min-height: 0;
+}
+.kw-pre-tile {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 300px;
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.kw-pre-vid {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* mirror the front camera, like the in-call self-tile */
+}
+.kw-pre-vid.no-mirror {
+  transform: none; /* a rear camera reads backwards if mirrored */
+}
+.kw-pre-face {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: #e6edf3;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.kw-pre-flip {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+/* Round mic/camera buttons centred at the bottom of the preview (Zoom-style). */
+.kw-pre-ctl {
+  position: absolute;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+}
+.kw-pre-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.kw-pre-btn.on {
+  background: var(--kw-accent, #1a7f4e);
+  border-color: var(--kw-accent, #1a7f4e);
+  color: #fff;
+}
+.kw-pre-title {
+  margin: 2px 0 0;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #e6edf3;
+}
+.kw-pre-err {
+  margin: 0;
+  color: #d29922;
+  font-size: 0.72rem;
+  text-align: center;
+}
+.kw-pre-btn svg {
+  width: 22px;
+  height: 22px;
+}
+/* Top-right control stack on the preview (speaker + flip camera), Zoom-style. */
+.kw-pre-side {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.kw-pre-sidebtn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.kw-pre-sidebtn svg {
+  width: 18px;
+  height: 18px;
+}
+.kw-pre-roomlbl {
+  color: #8b949e;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  margin-right: 4px;
+}
+/* The ✕ that replaces the header on the room-window pre-join (top-left, on the white screen). */
+.kw-prejoin-x {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #20262b;
+  background: transparent;
+  border: 0;
+}
+.kw-prejoin-x svg {
+  width: 24px;
+  height: 24px;
+}
+/* PRE-JOIN room window: the panel is TRANSPARENT so the document body's warm "paper" colour (set by
+   RoomPage, same palette as the create-room page) shows full-bleed — incl. under the iOS notch, which
+   the document level repaints correctly (a fixed panel's own bg change leaves a stale band there). */
+.kw-panel.kw-fillwin.kw-prejoinwin {
+  background: transparent;
+  color: #20262b;
+}
+.kw-fillwin.kw-prejoinwin .kw-lobby {
+  width: min(520px, 98%); /* small left/right margins — use the width */
+  /* narrow top (clears the ✕). A touch more side/bottom inset — and the safe-area floor on notched/rounded
+     phones — so the buttons' blue outline doesn't touch the iPhone's rounded screen corners. */
+  padding: 46px max(14px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+}
+.kw-lobby-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* Device pickers (mic / camera / speaker) in the lobby — each an icon + a select, laid out SIDE BY SIDE
+   (wrap if too narrow). */
+.kw-pre-devices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kw-pre-dev {
+  flex: 1 1 150px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.kw-pre-dev-ico {
+  flex: 0 0 auto;
+  width: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.75;
+}
+.kw-pre-dev select {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #161b22;
+  color: #e6edf3;
+  cursor: pointer;
+}
+.kw-prejoinwin .kw-pre-dev select {
+  background: #fff;
+  color: #20262b;
+  border-color: rgba(30, 40, 35, 0.18);
+}
+.kw-prejoinwin .kw-pre-title {
+  color: #20262b;
+}
+.kw-prejoinwin .kw-lobby input {
+  background: #fff;
+  color: #20262b;
+  border-color: rgba(30, 40, 35, 0.18);
+}
+.kw-prejoinwin .kw-hint,
+.kw-prejoinwin .kw-startfresh,
+.kw-prejoinwin .kw-id-hint {
+  color: #5c6670;
+}
+/* Open-room "declare who you are" pick (M, claimed identity) — pre-join, above the name field. */
+.kw-declare {
+  margin: 8px 0;
+  text-align: center;
+}
+.kw-declare-h {
+  margin: 0 0 6px;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.kw-declare-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.kw-declare-opt {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(140, 148, 158, 0.5);
+  background: transparent;
+  color: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.kw-declare-opt.on {
+  border-color: var(--kw-accent, #3fb950);
+  background: color-mix(in srgb, var(--kw-accent, #3fb950) 18%, transparent);
+}
+.kw-declare-hint {
+  margin: 6px 0 0;
+  font-size: 0.74rem;
+  color: #8b949e;
+}
+.kw-prejoinwin .kw-invite {
+  background: #fff;
+  color: #20262b;
+  border-color: rgba(30, 40, 35, 0.18);
+}
+.kw-prejoinwin .kw-agentwarn {
+  background: #fdeceb;
+  border-color: #f1b0ab;
+  color: #7a1c14;
+}
+.kw-prejoinwin .kw-agentwarn-h {
+  color: #b42318;
+}
+.kw-prejoinwin .kw-notice {
+  background: #fff6e0;
+  border-color: #e6c469;
+  color: #6b5200;
+}
+.kw-prejoinwin .kw-rejoin {
+  background: color-mix(in srgb, var(--kw-accent, #1a7f4e) 10%, transparent);
+  color: var(--kw-accent, #14532d);
+}
+.kw-prejoinwin .kw-id-signedin {
+  color: var(--kw-accent, #14532d);
+}
+/* SHORT-LANDSCAPE MOBILE ONLY (a phone on its side — little vertical room): the stacked layout doesn't
+   fit, so go side-by-side — preview on the LEFT, the form (consent + name + Join) beside it on the RIGHT.
+   Desktop & portrait keep the Zoom-style STACK (large self-tile on top, controls + consent below). */
+@media (orientation: landscape) and (max-height: 560px) {
+  /* The EMBEDDED corner panel (not the full-window surfaces, which size themselves) must never grow
+     TALLER than the short landscape viewport — otherwise opening chat pushes the panel up off the top of
+     the screen (its header + minimize/leave become unreachable) and it reads as a broken full-screen
+     takeover. Cap it to the viewport and let the body region (chat/tiles) flex + scroll inside. */
+  .kw-panel:not(.kw-fillwin):not(.kw-full):not(.kw-pip) {
+    max-height: calc(100dvh - 24px);
+  }
+  .kw-panel:not(.kw-fillwin):not(.kw-full):not(.kw-pip) .kw-bodysplit {
+    flex: 1;
+    min-height: 0;
+  }
+  .kw-panel:not(.kw-fillwin):not(.kw-full):not(.kw-pip) .kw-chat {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+  .kw-fillwin.kw-prejoinwin .kw-lobby {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 14px;
+    width: 96%;
+    max-width: 880px;
+    padding: 14px 14px 14px 56px; /* room for the ✕ on the left */
+  }
+  .kw-prejoinwin .kw-pre {
+    flex: 1 1 56%;
+  }
+  .kw-prejoinwin .kw-pre-tile {
+    min-height: 0; /* fill the short row instead of forcing 300px */
+  }
+  .kw-prejoinwin .kw-lobby-form {
+    flex: 1 1 44%;
+    overflow-y: auto;
+    justify-content: center;
+  }
+}
+/* DESKTOP / wide-and-tall window: the self-tile DOMINATES the tab (a big self-view filling most of it),
+   with the declaration + name + Join stacked BELOW it. Just widen the card; the default column already
+   makes the preview fill the height. The form is capped + centered so the inputs stay readable. */
+@media (min-width: 720px) and (min-height: 561px) {
+  .kw-fillwin.kw-prejoinwin .kw-lobby {
+    width: min(1400px, 97%); /* wide — the preview takes most of the tab, small margin to the edges */
+    max-width: none; /* lift the base 420px cap, else the tile stays narrow */
+  }
+  .kw-prejoinwin .kw-lobby-form {
+    flex: 0 0 auto; /* the form sits at its natural height under the big preview */
+    width: min(640px, 100%); /* roomy enough for the side-by-side device pickers */
+    margin: 0 auto; /* centered under the wide tile */
+  }
+}
+/* Part 1 of consent: Kibitz's OWN generic warning for an AI-assisted call (more prominent than the
+   specific notice below it). The specifics come from .kw-notice. */
+.kw-agentwarn {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(248, 81, 73, 0.12);
+  border: 1px solid rgba(248, 81, 73, 0.45);
+  color: #f3c9c6;
+}
+.kw-agentwarn-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: #ffb3ad;
+}
+.kw-agentwarn-b {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+/* The room's SPECIFIC disclosure, folded into the same banner as a sub-line (was the separate .kw-notice box).
+   No own colour — inherit .kw-agentwarn's theme-aware text colour (light on the dark theme, dark #7a1c14 on the
+   .kw-prejoinwin paper theme) exactly like .kw-agentwarn-b; a hardcoded light colour was invisible on paper. */
+.kw-agentwarn-note {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+/* Part 2 of consent: the room's SPECIFIC disclosure — joining the call = agreeing to it. */
+.kw-notice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(210, 153, 34, 0.12);
+  border: 1px solid rgba(210, 153, 34, 0.4);
+  color: #e6d8b8;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.kw-notice-ico {
+  flex: 0 0 auto;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+.kw-notice-txt {
+  flex: 1;
+}
+.kw-join {
+  font: inherit;
+  font-weight: 700;
+  font-size: 1rem;
+  background: var(--kw-accent, #1a7f4e);
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  padding: 13px;
+  cursor: pointer;
+  /* iOS: strip the native button chrome + the text-selection caret — one or the other drew a stray white vertical
+     line inside the green button. */
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-user-select: none;
+  user-select: none;
+  /* iOS Safari drew a faint light HORIZONTAL hairline across this wide solid button — but ONLY in a browser
+     tab, never in the installed PWA. In the browser, Safari's dynamic toolbar changes the viewport height, so
+     the layout lands off the device-pixel grid and the button's edge antialiases against the paper background
+     as a hairline; the PWA's viewport is stable/integer, so it never showed. Compositing the button onto its
+     own GPU layer rasterizes it cleanly on the pixel grid — the same translateZ(0) remedy the panel/video iOS
+     render fixes use. No visual change elsewhere. */
+  transform: translateZ(0);
+}
+.kw-join:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.kw-invite {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #e6edf3;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+/* Pre-join "Invite others" — a blue-outlined CTA so it's easy to find (it replaced the old auto-popping panel).
+   Doubled class (.kw-invite.kw-invite-cta) so it out-specifies the base .kw-invite:hover border override.
+   NOTE: don't set the label colour here — the pre-join button is WHITE (.kw-prejoinwin .kw-invite), so a light
+   colour makes the text + glyph vanish. Only the outline is coloured here; the label is set per-context below. */
+.kw-invite.kw-invite-cta {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6; /* a crisper ~2px blue outline without shifting layout */
+}
+.kw-invite.kw-invite-cta:hover {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 1px #60a5fa;
+}
+/* On the light pre-join the invite button is white — give the CTA a legible blue label + glyph (the base
+   .kw-prejoinwin .kw-invite sets dark text; the doubled class out-specifies it). The dark embedded panel keeps
+   the base light label, which is legible on its dark button. */
+.kw-prejoinwin .kw-invite.kw-invite-cta {
+  color: #1d4ed8;
+}
+.kw-invite:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.kw-invite.copied {
+  color: var(--kw-accent, #3fb950);
+  border-color: var(--kw-accent, #3fb950);
+}
+.kw-invite svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+/* Auto-rejoin banner: shown in the lobby right after a reload dropped the call. */
+.kw-rejoin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--kw-accent, #1a7f4e) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kw-accent, #3fb950) 40%, transparent);
+  color: color-mix(in srgb, var(--kw-accent, #1a7f4e) 22%, #fff);
+  font-size: 0.82rem;
+}
+.kw-rejoin-ico {
+  font-size: 1rem;
+  line-height: 1;
+}
+.kw-rejoin-txt {
+  flex: 1;
+}
+.kw-startfresh {
+  font: inherit;
+  align-self: center;
+  background: none;
+  border: 0;
+  color: #8b949e;
+  font-size: 0.74rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.kw-startfresh:hover {
+  color: #e6edf3;
+}
+.kw-hint {
+  margin: 0;
+  color: #8b949e;
+  font-size: 0.72rem;
+}
+.kw-error {
+  margin: 4px 8px 8px;
+  color: #f85149;
+  font-size: 0.78rem;
+  text-align: center;
+}
+/* Transient heads-up toast (call.notice) — a neutral, auto-dismissing pill floated near the top of the
+   panel for a mic/camera/share hiccup. The mic/camera button already shows on/off, so this never lingers
+   as a red banner. Distinct from .kw-error (fatal, red) and the host-consent .kw-notice. */
+.kw-toast {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translate(-50%, 0); /* hold centering after the entry animation ends (no fill-forwards) */
+  z-index: 7;
+  max-width: min(86%, 320px);
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(20, 22, 28, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #e8eaf0;
+  font-size: 0.76rem;
+  line-height: 1.3;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  pointer-events: none; /* informational only — never blocks a tap on the tile/controls below */
+  animation: kw-toast-in 160ms ease-out;
+}
+@keyframes kw-toast-in {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+/* iOS background released the mic/camera — a TAPPABLE prompt to revive them (the tap is the gesture
+   getUserMedia needs). Sits above the control bar; unlike the toast it accepts taps. */
+.kw-resume {
+  position: absolute;
+  bottom: 78px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  max-width: min(90%, 340px);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #2f6bff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  animation: kw-toast-in 160ms ease-out;
+}
+.kw-resume:active { filter: brightness(0.92); }
+/* Min-version kill-switch notice — a retired build can't connect. */
+.kw-retired {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(210, 153, 34, 0.5);
+  border-radius: 8px;
+  background: rgba(210, 153, 34, 0.12);
+  color: #f0d8a8;
+  font-size: 0.76rem;
+  text-align: center;
+}
+.kw-retired strong {
+  color: #f5c451;
+}
+.kw-retired-reload {
+  align-self: center;
+  margin-top: 2px;
+  padding: 4px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #d29922;
+  color: #1b1206;
+  font-weight: 700;
+  cursor: pointer;
+}
+/* Verified-roster (docs §7) banners — an alarm when an unlisted peer is present (or I'm
+   off-roster), and a quieter hold while everyone is still being verified. */
+.kw-rosteralarm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 8px;
+  padding: 8px 10px;
+  border: 1px solid #f85149;
+  border-radius: 8px;
+  background: rgba(248, 81, 73, 0.12);
+  color: #ffb4b0;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+.kw-rosteralarm-i {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+.kw-rosteralarm-tx strong {
+  color: #ff8a84;
+}
+.kw-rosteralarm-id {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(248, 81, 73, 0.22);
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+.kw-rosteralarm-go {
+  flex: none;
+  align-self: center;
+  font: inherit;
+  font-size: 0.74rem;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: #f85149;
+  color: #2b0907;
+  cursor: pointer;
+}
+.kw-rosterhold {
+  margin: 6px 8px;
+  padding: 7px 10px;
+  border: 1px solid #2f5d8a;
+  border-radius: 8px;
+  background: rgba(56, 139, 253, 0.1);
+  color: #9ec5ff;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+.kw-unlock {
+  font: inherit;
+  align-self: center;
+  margin: 6px;
+  background: var(--kw-accent, #3fb950);
+  color: #04130d;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Host bar — the authority's lobby toggle + the live knock list. Sits under the
+   header, above the body, for the room owner only (canGate). */
+/* Host-tools menu — a centered popover opened from the host-tools icon (waiting room + lock +
+   verified gate). Overlays the call; the chrome is pinned open while it's up (Widget.tsx). */
+.kw-hostmenu {
+  position: absolute;
+  z-index: 9;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: max-content;
+  max-width: min(320px, 90%);
+  max-height: 82%;
+  overflow-y: auto;
+  padding: 12px 14px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #000;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.5);
+}
+/* Claim-admin prompt — reuses the host-menu panel chrome. */
+.kw-claim-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.8;
+  line-height: 1.35;
+}
+.kw-claim-pw {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 9px 11px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e6edf3;
+}
+.kw-claim-pw:focus {
+  outline: none;
+  border-color: var(--kw-accent, #3fb950);
+}
+.kw-claim-err {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #f85149;
+}
+.kw-claim-go {
+  font: inherit;
+  font-weight: 600;
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: none;
+  background: var(--kw-accent, #1a7f4e);
+  color: #fff;
+  cursor: pointer;
+}
+.kw-claim-go:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.kw-hostmenu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #e6edf3;
+}
+.kw-hostmenu-x {
+  background: none;
+  border: none;
+  color: #8b949e;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.kw-lobtoggle {
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  color: #e6edf3;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+.kw-lobtoggle.on {
+  color: #f0c674;
+  border-color: #d29922;
+}
+/* Guest list editor (verified-only rooms): the host's live allow-list of exact emails. */
+.kw-guestlist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 9px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+.kw-guesthint {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #8b949e;
+}
+.kw-guests {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.kw-guestrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.76rem;
+  color: #e6edf3;
+}
+.kw-guestmail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kw-guestx {
+  flex: none;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  color: #8b949e;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.kw-guestx:hover {
+  color: #ffb4ae;
+}
+.kw-guestadd {
+  display: flex;
+  gap: 6px;
+}
+.kw-guestinput {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.76rem;
+  color: #e6edf3;
+  background: #0d1117;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  padding: 5px 8px;
+}
+.kw-guestinput::placeholder {
+  color: #6e7681;
+}
+.kw-guestaddbtn {
+  flex: none;
+  font: inherit;
+  font-size: 0.74rem;
+  color: #e6edf3;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.kw-guestaddbtn:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+/* Host action row: "Anyone with the link" (lobby) + Lock room + Reset on ONE line. In the narrow
+   embedded panel the lobby toggle takes a full line (basis 100%) and lock/reset wrap below it; on the
+   wide room window / full screen all three share a single line (see the .kw-fillwin/.kw-full override). */
+.kw-host-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.kw-host-row .kw-lobtoggle {
+  flex: 1 1 100%;
+  text-align: center;
+}
+.kw-fillwin .kw-host-row .kw-lobtoggle,
+.kw-full .kw-host-row .kw-lobtoggle {
+  flex: 2 1 auto; /* wide surfaces: share the line with the lock button, just a bit wider */
+}
+.kw-lockbtn {
+  flex: 1 1 auto;
+  font: inherit;
+  font-size: 0.76rem;
+  color: #e6edf3;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.kw-lockbtn.on {
+  color: #ffb4ae;
+  border-color: rgba(248, 81, 73, 0.6);
+}
+.kw-lockbtn:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+/* Email-ban summary (host, identity on): count + a Clear-all. */
+.kw-banrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 0.74rem;
+  color: #d29a9a;
+}
+.kw-banclear {
+  font: inherit;
+  font-size: 0.72rem;
+  color: #8b949e;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.kw-banclear:hover {
+  color: #e6edf3;
+}
+.kw-knocks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.kw-knockrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 5px 7px;
+}
+.kw-knocker {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-admit,
+.kw-deny {
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.kw-admit {
+  background: var(--kw-accent, #1a7f4e);
+  color: #fff;
+}
+.kw-deny {
+  background: transparent;
+  color: #f85149;
+  border: 1px solid rgba(248, 81, 73, 0.5);
+}
+
+/* Knock-to-admit — the joiner's waiting / refused state while the host's lobby is
+   on (the host hasn't let us in yet, so there's no roster to show). */
+.kw-knock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 22px 18px;
+  text-align: center;
+}
+.kw-knock-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+.kw-knock-title {
+  margin: 0;
+  font-weight: 700;
+  color: #e6edf3;
+}
+.kw-knock .kw-hint {
+  text-align: center;
+}
+.kw-knock .kw-invite {
+  margin-top: 4px;
+  align-self: stretch;
+  justify-content: center;
+}
+.kw-knock-name {
+  font: inherit;
+  width: 100%;
+  margin-top: 6px;
+  color: #e6edf3;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: center;
+}
+/* A gentle wave while we wait — knuckles down so it reads as a knock/hello. */
+.kw-knock-wave {
+  transform-origin: 70% 80%;
+  animation: kw-wave 1.6s ease-in-out infinite;
+}
+@keyframes kw-wave {
+  0%,
+  60%,
+  100% {
+    transform: rotate(0deg);
+  }
+  15% {
+    transform: rotate(16deg);
+  }
+  30% {
+    transform: rotate(-10deg);
+  }
+  45% {
+    transform: rotate(12deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kw-knock-wave {
+    animation: none;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Professional call layout — Speaker / Gallery / Auto (see Widget.tsx CallView).
+   Speaker view promotes one active-speaker tile to a big stage with the rest as a
+   filmstrip; the dedicated room window + full screen get a roomier, video-first
+   treatment. Embedded corner widget keeps its compact tiles.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* A clearer, animated active-speaker accent ring. */
+.tile {
+  transition: box-shadow 0.18s ease;
+}
+.tile.speaking {
+  box-shadow:
+    inset 0 0 0 3px var(--kw-accent, #3fb950),
+    0 0 0 1px color-mix(in srgb, var(--kw-accent, #3fb950) 55%, transparent),
+    0 0 16px color-mix(in srgb, var(--kw-accent, #3fb950) 45%, transparent);
+}
+
+/* The voice-only focus reads as a large face in the speaker stage. Sized in cqmin (container units) so it
+   tracks the STAGE TILE — which grows when you resize the box — not the viewport (the old 13vmin only
+   followed the window, so the other person's avatar never changed on an embed box-resize). */
+.kw-speaker .kw-stage .face,
+.kw-staging .kw-stage .face {
+  font-size: clamp(2rem, 38cqmin, 9rem);
+}
+
+/* Keep the video off the device's rounded screen corners / home-indicator strip. The room window
+   fills to the physical screen edge on a phone, so once the control bar auto-hides the bottom tile
+   would otherwise clip into the rounded corners. A small bottom inset on the video region (it just
+   stacks above the control bar when that's visible). */
+.kw-fillwin .kw-stagewrap,
+.kw-full .kw-stagewrap {
+  position: relative; /* anchors the page-indicator dots (and the mobile floating self-view) */
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+}
+
+/* Car (driving) mode: no tiles at all — a big who's-talking line + a giant mute button you can hit
+   without looking. Fills the video column. */
+.kw-carview {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  padding: 24px;
+  text-align: center;
+  color: #e6edf3;
+}
+.kw-car-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.kw-car-title {
+  font-size: clamp(1.4rem, 6vw, 2rem);
+  font-weight: 700;
+  line-height: 1.15;
+}
+.kw-car-sub {
+  font-size: 0.95rem;
+  opacity: 0.6;
+}
+.kw-car-mic {
+  width: clamp(120px, 34vw, 168px);
+  height: clamp(120px, 34vw, 168px);
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--kw-accent, #3fb950) 50%, transparent);
+  background: color-mix(in srgb, var(--kw-accent, #3fb950) 16%, transparent);
+  color: #e6edf3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+}
+.kw-car-mic:active {
+  transform: scale(0.96);
+}
+.kw-car-mic svg {
+  width: 42%;
+  height: 42%;
+}
+.kw-car-mic.off {
+  border-color: rgba(248, 81, 73, 0.6);
+  background: rgba(248, 81, 73, 0.18);
+}
+.kw-car-hint {
+  font-size: 1.05rem;
+  opacity: 0.7;
+}
+
+/* Zoom-style page dots: a small centred row hinting the Speaker · Gallery · Car swipe when more than
+   one person is in. Flows at the BOTTOM of the video column — below the filmstrip / gallery — and the
+   control bar replaces it when the chrome is up (see the :not(.kw-chromehidden) rule below). */
+.kw-viewdots {
+  flex: 0 0 auto;
+  align-self: center;
+  display: flex;
+  gap: 7px;
+  margin: 5px 0 1px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.32);
+}
+/* When the control bar (chrome) is showing, it carries the layout toggle — so the dots stand down. */
+.kw-fillwin:not(.kw-chromehidden) .kw-viewdots,
+.kw-full:not(.kw-chromehidden) .kw-viewdots {
+  display: none;
+}
+/* …EXCEPT car mode, which hides the control bar entirely — the dots are then the only view switcher, so keep
+   them (car mode has the chrome nominally "up" since its auto-hide is off). Must follow the rule above to win. */
+.kw-fillwin.kw-car .kw-viewdots,
+.kw-full.kw-car .kw-viewdots {
+  display: flex;
+}
+.kw-viewdot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.kw-viewdot.on {
+  background: rgba(255, 255, 255, 0.95);
+  transform: scale(1.25);
+}
+
+/* Uniform black video region: drop the teal grid fill (the filmstrip band is handled at its own rule)
+   so the tiles (light border + shadow) float on black. The gaps and the bottom safe-margin all read as
+   seamless letterbox — never a filled strip when a bar fades. */
+.kw-fillwin .kw-grid,
+.kw-full .kw-grid {
+  background: transparent;
+}
+
+/* Speaker stage in the dedicated room window / full screen: fill the height, with
+   the filmstrip a fixed row beneath — the video is the hero, not a 16:9 letterbox. */
+.kw-fillwin .kw-stage,
+.kw-full .kw-stage {
+  flex: 1 1 auto;
+  aspect-ratio: auto;
+  max-height: none;
+  min-height: 0;
+  border-bottom: 0;
+}
+.kw-fillwin .kw-faces,
+.kw-full .kw-faces {
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 10px;
+  gap: 10px;
+  background: transparent; /* seamless black filmstrip band — tiles float, no teal fill */
+}
+.kw-fillwin .kw-faces .tile,
+.kw-full .kw-faces .tile {
+  flex: 0 0 132px;
+  height: 92px;
+  border-radius: 12px;
+}
+
+/* Roomier, evenly-spaced controls in the big window / full screen — the 22px header
+   icons are right for an embedded corner panel but too small for a full window. */
+.kw-fillwin .kw-head,
+.kw-full .kw-head {
+  gap: 8px;
+  padding: 9px 14px;
+}
+.kw-fillwin .kw-ic,
+.kw-full .kw-ic {
+  width: 40px;
+  height: 40px;
+  font-size: 1.05rem;
+  border-radius: 10px;
+}
+.kw-fillwin .kw-ic svg,
+.kw-full .kw-ic svg {
+  /* 19px on a phone (fullscreen ≈ a small viewport) — good for mobile — but scale up on a desktop-width viewport
+     so the top/bottom-bar glyphs aren't tiny on a big screen. Embedded (non-full) widgets use the cq rules, untouched. */
+  width: clamp(19px, 2.2vw, 30px);
+  height: clamp(19px, 2.2vw, 30px);
+}
+/* iPhone/fullscreen (fillwin/full): the icons are 40px. The leave ✕ is now an SVG — size it bigger than the 19px
+   regular icons so it stays the easiest to spot/tap; keep the "Leave?" confirm at a normal text size. */
+.kw-fillwin .kw-ic.leave svg,
+.kw-full .kw-ic.leave svg {
+  width: clamp(26px, 2.9vw, 38px);
+  height: clamp(26px, 2.9vw, 38px);
+}
+.kw-fillwin .kw-ic.leave.armed,
+.kw-full .kw-ic.leave.armed {
+  font-size: 1rem;
+}
+/* Match the participant-count chip to the 40px icon height here (it stayed 22px → shorter than the other buttons). */
+.kw-fillwin .kw-rostercount,
+.kw-full .kw-rostercount {
+  height: 40px;
+  font-size: 0.95rem;
+  border-radius: 10px;
+  padding: 0 11px;
+  gap: 6px;
+}
+.kw-fillwin .kw-rostercount svg,
+.kw-full .kw-rostercount svg {
+  width: 18px;
+  height: 18px;
+}
+.kw-fillwin .kw-title,
+.kw-full .kw-title {
+  font-size: 0.95rem;
+}
+
+/* Gallery grid auto-fits more people in the big window instead of a fixed 2×2. Rows size to the tiles'
+   own (camera) aspect rather than stretching to fill the column height — on a portrait phone a single
+   stretched row would zoom-crop every face. The block centres in the leftover space instead. */
+.kw-fillwin .kw-grid:not(.kw-faces):not(.kw-solo):not(.kw-duo),
+.kw-full .kw-grid:not(.kw-faces):not(.kw-solo):not(.kw-duo) {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-rows: none;
+  grid-auto-rows: auto;
+  align-content: center;
+  gap: 10px;
+  padding: 12px;
+}
+
+/* Gallery tiles (room window / full screen) keep the ~4:3 camera shape so the video fills them with no
+   stretch or heavy crop; the grid centres them. The filmstrip (.kw-faces) and the solo self-view, which
+   are meant to fill, opt out. The duo also drops its stretched single row. */
+.kw-fillwin .kw-grid.kw-duo,
+.kw-full .kw-grid.kw-duo {
+  grid-template-rows: none;
+  grid-auto-rows: auto;
+  align-content: center;
+}
+.kw-fillwin .kw-grid:not(.kw-faces):not(.kw-solo) > .tile,
+.kw-full .kw-grid:not(.kw-faces):not(.kw-solo) > .tile {
+  aspect-ratio: 4 / 3;
+  height: auto;
+  min-height: 0;
+}
+
+/* Portrait (phone): a side-by-side pair is cramped, so stack 2 (and 3) people one above the other —
+   each a wide full-width 4:3 tile. 4+ go to a fixed 2-up grid so they fit without a very tall scroll. */
+@media (orientation: portrait) {
+  .kw-fillwin .kw-grid.kw-duo,
+  .kw-full .kw-grid.kw-duo {
+    grid-template-columns: 1fr;
+  }
+  .kw-fillwin .kw-grid:not(.kw-faces):not(.kw-solo):not(.kw-duo),
+  .kw-full .kw-grid:not(.kw-faces):not(.kw-solo):not(.kw-duo) {
+    grid-template-columns: 1fr 1fr;
+  }
+  /* Exactly 3: a single column of three tiles that SHARE the column height (1fr rows) so they fill the
+     screen without overflowing/clipping — three 4:3 tiles would be too tall. (Beats the 2-up + the 4:3
+     tile rule above.) */
+  .kw-fillwin .kw-grid:not(.kw-faces):not(.kw-solo):not(.kw-duo)[data-tiles='3'],
+  .kw-full .kw-grid:not(.kw-faces):not(.kw-solo):not(.kw-duo)[data-tiles='3'] {
+    grid-template-columns: 1fr;
+    grid-auto-rows: 1fr;
+    align-content: stretch;
+  }
+  .kw-fillwin .kw-grid:not(.kw-faces):not(.kw-solo):not(.kw-duo)[data-tiles='3'] > .tile,
+  .kw-full .kw-grid:not(.kw-faces):not(.kw-solo):not(.kw-duo)[data-tiles='3'] > .tile {
+    aspect-ratio: auto;
+    height: auto;
+    min-height: 0;
+  }
+}
+
+/* SHORT landscape (phones first, and any stubby window): a horizontal face strip under the stage
+   burns the scarce vertical space. Dock it as a vertical column on the SIDE instead, so the shared
+   screen / speaker keeps the full height. Stage views only (speaker/presenter) — the gallery, which
+   is neither .kw-staging nor .kw-speaker, is untouched and still fills the area as a grid. */
+/* The side area = the face tiles + the ink toolbar, together. Default (portrait): a block UNDER the
+   stage (faces strip, toolbar below). Landscape/desktop: a column on the RIGHT (media query below). */
+.kw-side {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 0;
+  min-width: 0;
+}
+/* The ink toolbar is PORTALLED here, out of the stage (whose touch-action:none + zoom listeners swallow
+   taps on iOS). Static flex layout; the pen palette WRAPS so it never overflows a narrow side column. */
+.kw-toolslot {
+  display: flex;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 6px;
+}
+.kw-toolslot .kw-ink-bar {
+  position: static;
+  margin: 0;
+  width: auto;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Landscape (mobile) AND desktop room windows: tiles + tools live in a column on the RIGHT, so the
+   shared screen / speaker keeps the full height and the toolbar is always reachable. Stage views only
+   (speaker / presenter); the gallery is untouched. */
+@media (orientation: landscape) {
+  .kw-fillwin.kw-staging .kw-stagewrap,
+  .kw-fillwin.kw-speaker .kw-stagewrap,
+  .kw-full.kw-staging .kw-stagewrap,
+  .kw-full.kw-speaker .kw-stagewrap {
+    flex-direction: row;
+    align-items: stretch;
+  }
+  /* The stage takes the remaining width (min-width:0 lets it shrink rather than overflow). */
+  .kw-fillwin.kw-staging .kw-stage,
+  .kw-fillwin.kw-speaker .kw-stage,
+  .kw-full.kw-staging .kw-stage,
+  .kw-full.kw-speaker .kw-stage {
+    min-width: 0;
+  }
+  /* The side column: a fixed-width strip on the right. Tiles scroll; the toolbar stays pinned below. */
+  .kw-fillwin.kw-staging .kw-side,
+  .kw-fillwin.kw-speaker .kw-side,
+  .kw-full.kw-staging .kw-side,
+  .kw-full.kw-speaker .kw-side {
+    flex: 0 0 auto;
+    /* The side column WIDENS when there are only a few people (so the non-speaker tiles are large) and narrows
+       as more join (fit more, then scroll). Default below is the many-people width; data-faces overrides widen
+       it for 1–4. Still vw-scaled, so a landscape phone stays compact and the stage keeps the room. */
+    width: clamp(120px, 19vw, 240px);
+    max-height: 100%;
+    overflow: hidden;
+  }
+  .kw-fillwin .kw-side[data-faces='1'],
+  .kw-fillwin .kw-side[data-faces='2'],
+  .kw-full .kw-side[data-faces='1'],
+  .kw-full .kw-side[data-faces='2'] {
+    width: clamp(210px, 26vw, 360px);
+  }
+  .kw-fillwin .kw-side[data-faces='3'],
+  .kw-fillwin .kw-side[data-faces='4'],
+  .kw-full .kw-side[data-faces='3'],
+  .kw-full .kw-side[data-faces='4'] {
+    width: clamp(160px, 22vw, 290px);
+  }
+  .kw-fillwin.kw-staging .kw-side .kw-faces,
+  .kw-fillwin.kw-speaker .kw-side .kw-faces,
+  .kw-full.kw-staging .kw-side .kw-faces,
+  .kw-full.kw-speaker .kw-side .kw-faces {
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: safe center; /* centre when the tiles fit; 'safe' falls back to flex-start on overflow so the top tile is never clipped (still scrollable) */
+    width: auto;
+    padding: 8px;
+    gap: 8px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    touch-action: pan-y; /* the side column scrolls vertically now */
+  }
+  .kw-fillwin.kw-staging .kw-side .kw-faces .tile,
+  .kw-fillwin.kw-speaker .kw-side .kw-faces .tile,
+  .kw-full.kw-staging .kw-side .kw-faces .tile,
+  .kw-full.kw-speaker .kw-side .kw-faces .tile {
+    flex: 0 0 auto;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+  /* With the stagewrap now a ROW, the page dots would otherwise become a third row item — landing on
+     the RIGHT, vertically centred. Pin them to the bottom-centre of the stage as an overlay instead.
+     They only show while the chrome is hidden, so there's no control bar below them to collide with. */
+  .kw-fillwin.kw-staging .kw-viewdots,
+  .kw-fillwin.kw-speaker .kw-viewdots,
+  .kw-full.kw-staging .kw-viewdots,
+  .kw-full.kw-speaker .kw-viewdots {
+    position: absolute;
+    left: 50%;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    margin: 0;
+    z-index: 5;
+  }
+  /* Chat open (split view): the dots would otherwise float mid-screen at the short tiles-strip's bottom.
+     Pin them to the bottom, just above the composer (text bar). Fixed because the stage is overflow:hidden
+     (absolute would clip); placed after the rule above so it wins on source order. */
+  .kw-fillwin.kw-chatsplit .kw-viewdots,
+  .kw-full.kw-chatsplit .kw-viewdots {
+    position: fixed;
+    bottom: calc(env(safe-area-inset-bottom) + 52px);
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 0;
+    z-index: 6;
+  }
+}
+
+/* Your own tile stays docked as a normal thumbnail in the filmstrip — NOT floated as a corner PiP over
+   the stage, which covered the other person's video (worst in a 1-on-1, where they ARE the stage). */
+
+/* Zoom-style bottom control bar (room window / full screen only): the call buttons live here, not in
+   the header, so the video is full-bleed and the top is just a slim title strip. Centred, floating
+   chip-bar look, and it fades together with the header (and host controls) when the chrome hides. */
+.kw-controlbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  /* Lift the buttons clear of the iPhone home-indicator swipe zone (it swallows taps near the very
+     bottom edge). Honours the safe-area inset if viewport-fit=cover is ever enabled, with a fixed
+     floor that already clears the gesture band in a standalone PWA. */
+  padding-bottom: max(28px, calc(env(safe-area-inset-bottom) + 8px));
+  background: #000;
+}
+
+/* Borderless surface: drop every interior 1px divider in the room window / full screen — the header's
+   bottom rule (above the video), the host bar's bottom rule, and (handled above) the control bar's top
+   rule. The dark bar backgrounds already set them apart; the lines just read as stray borders, and a
+   collapsed header/bar would otherwise leave a 1px line behind even when hidden. */
+.kw-fillwin .kw-head,
+.kw-full .kw-head {
+  border: 0;
+}
+
+/* Auto-hiding chrome (room window / full screen): the header (slim title strip), the bottom control
+   bar, and the host controls all collapse out of the way after a few idle seconds — giving full-bleed
+   video — and slide back on any pointer move / tap / key (driven by Widget.tsx's chromeHidden). */
+.kw-fillwin .kw-head,
+.kw-full .kw-head {
+  transition: opacity 0.25s ease, max-height 0.25s ease, padding 0.25s ease;
+  max-height: 60px;
+  overflow: hidden;
+}
+/* These collapse their HEIGHT (not just fade) so the stage — flex:1 in the column — actually reclaims
+   the vacated rows and the video grows to full-bleed. max-height is set generously enough to never clip
+   the natural content when visible (the bar can wrap to two rows on a phone; the host block can carry a
+   guest list), and animates to 0 when hidden. */
+.kw-fillwin .kw-controlbar,
+.kw-full .kw-controlbar {
+  transition: opacity 0.25s ease, max-height 0.25s ease, padding 0.25s ease;
+  max-height: 180px;
+  overflow: hidden;
+}
+/* Landscape + a stage: the bottom control bar STAYS a horizontal bar but tucks into the bottom-RIGHT corner —
+   mirroring where it sits in the chat+stage+landscape layout (the bottom of the right chat column). Absolute →
+   it takes no layout space, so the video tiles (bottom-left) are never pushed up; ALWAYS visible (no auto-hide).
+   The staged-video transport stays to its LEFT so the two don't overlap. */
+@media (orientation: landscape) {
+  .kw-fillwin.kw-hasstage:not(.kw-haschat) .kw-controlbar,
+  .kw-full.kw-hasstage:not(.kw-haschat) .kw-controlbar,
+  .kw-fillwin.kw-hasstage:not(.kw-haschat).kw-chromehidden .kw-controlbar,
+  .kw-full.kw-hasstage:not(.kw-haschat).kw-chromehidden .kw-controlbar {
+    position: absolute;
+    right: 8px;
+    bottom: 10px;
+    left: auto;
+    top: auto;
+    width: auto;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 10px;
+    padding-bottom: max(10px, calc(env(safe-area-inset-bottom) + 4px));
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 14px;
+    max-height: none;
+    opacity: 1;
+    overflow: visible;
+    z-index: 10;
+  }
+  /* Keep the staged-video transport to the LEFT of the control cluster so the two don't overlap. */
+  .kw-fillwin.kw-hasstage:not(.kw-haschat) .kw-stagebar,
+  .kw-full.kw-hasstage:not(.kw-haschat) .kw-stagebar {
+    right: 320px;
+  }
+}
+/* PORTRAIT + a stage: float the auto-hide chrome so revealing it never reflows the stage or the face strip —
+   the video + tiles stay put and the bars fade in OVER them (matching landscape, where the control bar is
+   already absolute). Both bars go out of flow; show/hide is by opacity (their max-height collapse no longer
+   moves the layout since neither is in the column anymore). */
+@media (orientation: portrait) {
+  .kw-fillwin.kw-hasstage .kw-head,
+  .kw-full.kw-hasstage .kw-head {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9;
+  }
+  .kw-fillwin.kw-hasstage:not(.kw-haschat) .kw-controlbar,
+  .kw-full.kw-hasstage:not(.kw-haschat) .kw-controlbar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9;
+  }
+}
+/* Agent popovers (the agent-actions 'controls' menu AND the master 🤖 Agents menu) open ABOVE their
+   button (the bar is at the bottom). The bar's overflow:hidden (for its show/hide max-height animation)
+   CLIPPED them, so they looked hidden behind the video tile. While a popover is open — OR the one-time
+   join coachmark is showing (it floats above the SAME button, with the popover closed) — let the bar
+   overflow so it shows over the stage; otherwise overflow:hidden returns (animation intact). */
+.kw-fillwin .kw-controlbar:has(.kw-agentbar--controls),
+.kw-full .kw-controlbar:has(.kw-agentbar--controls),
+.kw-fillwin .kw-controlbar:has(.kw-agentsmenu),
+.kw-full .kw-controlbar:has(.kw-agentsmenu),
+.kw-fillwin .kw-controlbar:has(.kw-agentbar-coach),
+.kw-full .kw-controlbar:has(.kw-agentbar-coach) {
+  overflow: visible;
+}
+.kw-fillwin.kw-chromehidden .kw-head,
+.kw-full.kw-chromehidden .kw-head {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  pointer-events: none;
+}
+/* Driving (car) mode: BOTH bars are hidden — the bottom control bar (car mode has its own big mic; you don't
+   need cam/share/chat driving) and the top bar. A standalone Leave ✕ (.kw-car-x) replaces the top bar's ✕ in the
+   same top-right spot, so leaving is still one tap. Force-collapsed regardless of the auto-hide reveal state. */
+.kw-fillwin.kw-car .kw-head,
+.kw-full.kw-car .kw-head,
+.kw-fillwin.kw-car .kw-controlbar,
+.kw-full.kw-car .kw-controlbar {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  pointer-events: none;
+}
+/* The car-mode Leave ✕ — a floating copy of the top-bar ✕ (reuses .kw-ic.leave styling), pinned to the same
+   top-right spot (the fill-window head's 9px/14px insets, clear of the notch). */
+.kw-car-x {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 9px);
+  right: calc(env(safe-area-inset-right, 0px) + 14px);
+  z-index: 8;
+}
+.kw-fillwin.kw-chromehidden .kw-controlbar,
+.kw-full.kw-chromehidden .kw-controlbar {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  pointer-events: none;
+}
+/* Chatsplit: the control bar is moved INTO the chat column (under the composer). As a flex child there,
+   pin it to the bottom, divide it from the messages, and keep the iPhone home-indicator clearance. */
+.kw-controlbar-inchat {
+  flex: 0 0 auto;
+  border-top: 0;
+  gap: 6px;
+  padding: 8px 8px max(20px, calc(env(safe-area-inset-bottom) + 6px));
+}
+/* The chat column is narrow, so shrink the controls a touch (vs the full-width bar's 40px) — more fit per
+   row, fewer wrapped rows eating the message area. */
+.kw-controlbar.kw-controlbar-inchat .kw-ic {
+  width: 34px;
+  height: 34px;
+  font-size: 0.98rem;
+  border-radius: 9px;
+}
+.kw-controlbar.kw-controlbar-inchat .kw-ic svg {
+  width: 17px;
+  height: 17px;
+}
+/* It stays put while ONLY the top bar auto-hides — override the chrome-hide collapse for this one. */
+.kw-fillwin.kw-chromehidden .kw-controlbar.kw-controlbar-inchat,
+.kw-full.kw-chromehidden .kw-controlbar.kw-controlbar-inchat {
+  opacity: 1;
+  max-height: 220px;
+  padding-top: 8px;
+  padding-bottom: max(20px, calc(env(safe-area-inset-bottom) + 6px));
+  pointer-events: auto;
+}
+.kw-fillwin.kw-chromehidden,
+.kw-full.kw-chromehidden {
+  cursor: none; /* like a video player — the pointer hides with the controls */
+}
+
+/* See-through ghost panel (embedded): fade ONLY the call buttons after idle, leaving the slim title
+   strip up top as the tap target — touch it and the buttons slide back (Widget.tsx arms chromeHidden
+   here too). Scoped to .kw-headctrls so the title + minimize/leave stay put. */
+.kw-headctrls {
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
+  transition: opacity 0.22s ease, max-width 0.22s ease;
+  overflow: hidden;
+}
+.kw-ghostmode.kw-chromehidden .kw-headctrls {
+  opacity: 0;
+  max-width: 0;
+  pointer-events: none;
+}
+
+/* Embedded corner panel, in-call tile view: the primary controls ride a bottom bar that FLOATS over the
+   foot of the video (a Zoom-style scrim) rather than crammed in the header. It's an OVERLAY (absolute,
+   out of flow) so showing/hiding it never resizes the tile — only this bar auto-hides; the top bar stays.
+   It slides back on any tap (incl. the always-present top bar), driven by Widget.tsx's chromeHidden. */
+.kw-controlbar-float {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  /* The scrim fades the video into the bar so light controls stay legible over any frame. */
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.95), rgba(0, 0, 0, 0.62) 55%, transparent);
+  padding: 18px 10px 10px;
+  transition: opacity 0.25s ease;
+  /* A size container so the bar's icons scale with the box width (cqi below) — stretch the panel, the
+     controls grow with it instead of staying tiny. The bar spans the panel width, so cqi ≈ box width. */
+  container-type: inline-size;
+}
+/* Embed bar icons track the box: bigger box → bigger buttons (clamped to the room-window's 40px feel). */
+.kw-controlbar-float .kw-ic {
+  width: clamp(22px, 7.5cqi, 38px);
+  height: clamp(22px, 7.5cqi, 38px);
+  border-radius: clamp(7px, 2.4cqi, 11px);
+}
+.kw-controlbar-float .kw-ic svg {
+  width: clamp(13px, 4.4cqi, 19px);
+  height: clamp(13px, 4.4cqi, 19px);
+}
+/* Strip tiles read the box width through this container (embed corner only — the room window's stagewrap
+   has its own landscape row layout). */
+.kw-panel:not(.kw-fillwin):not(.kw-full) .kw-stagewrap {
+  container-type: inline-size;
+}
+/* Top-bar icons scale with the box too (embed corner only; the room window header is fixed). The Leave
+   button's RIGHT inset doesn't change, so growing icons never re-enter the top-right resize corner. */
+.kw-panel:not(.kw-fillwin):not(.kw-full) .kw-head {
+  container-type: inline-size;
+}
+.kw-panel:not(.kw-fillwin):not(.kw-full) .kw-head .kw-ic {
+  width: clamp(22px, 7cqi, 36px);
+  height: clamp(22px, 7cqi, 36px);
+}
+.kw-panel:not(.kw-fillwin):not(.kw-full) .kw-head .kw-ic svg {
+  width: clamp(13px, 4.2cqi, 18px);
+  height: clamp(13px, 4.2cqi, 18px);
+}
+/* The armed "Leave?" confirm keeps its auto width (don't let the square-icon sizing above pin it). */
+.kw-panel:not(.kw-fillwin):not(.kw-full) .kw-head .kw-ic.leave.armed {
+  width: auto;
+}
+.kw-panel:not(.kw-fillwin):not(.kw-full):not(.kw-pip).kw-chromehidden .kw-controlbar-float {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Legible name labels over video — bigger in the big window, and a subtle bottom scrim on the
+   speaker stage so the active speaker's name reads over any camera frame. */
+.kw-speaker .kw-stage .tag,
+.kw-staging .kw-stage .tag,
+.kw-fillwin .tag,
+.kw-full .tag {
+  font-size: 0.82rem;
+  padding: 2px 10px;
+  left: 8px;
+  bottom: 8px;
+  background: rgba(0, 0, 0, 0.6);
+}
+/* The big SPEAKER tile sits on pure black (no video / no scrim contrast to read against), so a black name pill
+   vanishes. Give ONLY this tile's name a faintly-lit chip so it reads as a bubble inside the bordered tile —
+   matching the strip face-tile chips. Both the gallery speaker (.kw-speaker) and the chat-split speaker
+   (.kw-haschat:not(.kw-hasstage)). Strip / presenter-share name tags are untouched. */
+.kw-speaker .kw-stage .tag,
+.kw-haschat:not(.kw-hasstage) .kw-stage .tag {
+  background: rgba(255, 255, 255, 0.14);
+}
+.kw-speaker .kw-stage::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 64px;
+  z-index: 1; /* above the video, below the name tag / any overlay controls */
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.45), transparent);
+  pointer-events: none;
+}
+
+/* In-call menu of an agent's self-declared actions (agent-actions@1), shown atop the chat panel. */
+/* The accent is an agent-declared CSS custom property (validated upstream); this is the default. A
+   themed MenuRow / controls wrapper overrides --kw-agent-accent inline, and chips derive every tint
+   from it via color-mix — so one color yields a whole coherent look with no per-color CSS. */
+.kw-agentbar,
+.kw-agentbar-ctrlwrap {
+  --kw-agent-accent: var(--kw-accent, #3fb950);
+}
+.kw-agentbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 0;
+}
+.kw-agentbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.kw-agentbar-name {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-right: 2px;
+}
+.kw-agentbar-chip {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 5px 11px;
+  border-radius: 8px;
+  /* Plain fallbacks first for browsers without color-mix() (pre late-2022); the color-mix lines below
+     override where supported and derive every tint from the agent's accent. */
+  border: 1px solid color-mix(in srgb, var(--kw-accent, #3fb950) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kw-agent-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--kw-accent, #3fb950) 16%, transparent);
+  background: color-mix(in srgb, var(--kw-agent-accent) 16%, transparent);
+  color: #b5e8c4;
+  color: color-mix(in srgb, var(--kw-agent-accent) 35%, white);
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.08s ease, color 0.12s ease;
+}
+.kw-agentbar-chip:hover {
+  background: color-mix(in srgb, var(--kw-agent-accent) 28%, transparent);
+}
+/* Press feedback — touch has no :hover, so make the tap obvious: dip on press, then a brief filled
+   "sent" flash (toggled in JS for ~0.7s) confirming the action reached the agent. */
+.kw-agentbar-chip:active {
+  transform: scale(0.95);
+  background: color-mix(in srgb, var(--kw-agent-accent) 42%, transparent);
+}
+
+/* ── Host menu — the brand-injected in-call iframe panel (HostMenuBar.tsx) ───────────────────── */
+.kw-hostmenu-row {
+  display: inline-flex;
+  gap: 6px;
+}
+.kw-hostmenu-btn {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 5px 11px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--kw-accent, #3fb950) 45%, transparent);
+  background: color-mix(in srgb, var(--kw-accent, #3fb950) 16%, transparent);
+  color: color-mix(in srgb, var(--kw-accent, #3fb950) 38%, white);
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.08s ease;
+}
+.kw-hostmenu-btn:hover {
+  background: color-mix(in srgb, var(--kw-accent, #3fb950) 28%, transparent);
+}
+.kw-hostmenu-btn:active {
+  transform: scale(0.95);
+}
+.kw-hostmenu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.55);
+}
+.kw-hostmenu-panel {
+  position: relative;
+  width: min(380px, 94vw);
+  height: min(560px, 86vh);
+  overflow: hidden;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
+}
+.kw-hostmenu-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.kw-hostmenu-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.kw-hostmenu-close:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+.kw-agentbar-chip--sent,
+.kw-agentbar-chip--sent:hover {
+  background: var(--kw-agent-accent);
+  border-color: var(--kw-agent-accent);
+  color: #fff;
+}
+/* Grayed out while the agent is working (meta.busy) — a re-tap can't queue another job (the singer-loop fix). */
+.kw-agentbar-chip--disabled,
+.kw-agentbar-chip--disabled:hover {
+  opacity: 0.4;
+  cursor: default;
+  filter: grayscale(1);
+  pointer-events: none;
+}
+/* The persistent "🙏 Thanks" chip — ends the back-and-forth; stays live even while working. */
+.kw-agentbar-chip--thanks {
+  font-weight: 600;
+}
+.kw-agentbar-working {
+  opacity: 0.8;
+  font-size: 0.9em;
+}
+
+/* ── Chip style variants (ui.theme.chip) ─────────────────────────────────────────── */
+.kw-agentbar--chip-pill .kw-agentbar-chip {
+  border-radius: 999px;
+}
+.kw-agentbar--chip-outline .kw-agentbar-chip {
+  background: transparent;
+  border-color: var(--kw-agent-accent);
+  color: color-mix(in srgb, var(--kw-agent-accent) 55%, white);
+}
+.kw-agentbar--chip-outline .kw-agentbar-chip:hover {
+  background: color-mix(in srgb, var(--kw-agent-accent) 18%, transparent);
+}
+.kw-agentbar--chip-ghost .kw-agentbar-chip {
+  background: transparent;
+  border-color: transparent;
+  color: color-mix(in srgb, var(--kw-agent-accent) 55%, white);
+}
+.kw-agentbar--chip-ghost .kw-agentbar-chip:hover {
+  background: color-mix(in srgb, var(--kw-agent-accent) 16%, transparent);
+}
+
+/* ── Size variants (ui.theme.size) ───────────────────────────────────────────────── */
+.kw-agentbar--size-compact .kw-agentbar-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+.kw-agentbar--size-large .kw-agentbar-chip {
+  font-size: 14px;
+  padding: 8px 15px;
+}
+.kw-agentbar--size-compact .kw-agentbar-name {
+  font-size: 11px;
+}
+.kw-agentbar--size-large .kw-agentbar-name {
+  font-size: 14px;
+}
+
+/* ── Placement variants ───────────────────────────────────────────────────────────
+   The base .kw-agentbar (above) is the 'chat' surface — a row at the top of the chat
+   panel. These modifiers re-place the same chips elsewhere in the call. */
+
+/* stage: a floating pill across the top of the call surface, always visible. The container is
+   click-through (so stage swipes/taps still work); only the chips capture taps. */
+.kw-agentbar--stage {
+  position: absolute;
+  top: 16px; /* a touch off the very top edge */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  /* max-content (capped at the viewport) so the pill takes the FULL available width and packs chips
+     several-per-row when wrapping — without it the shrink-to-fit absolute box collapses to the widest
+     single chip and every action stacks on its own line. */
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px; /* rounded-rect, not a full pill — a 999px radius clips the top/bottom rows when wrapped */
+  background: rgba(18, 20, 24, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.kw-agentbar--stage .kw-agentbar-row {
+  /* WRAP, don't scroll: a horizontal overflow:auto row silently CLIPPED the last actions off-screen
+     (no scrollbar on mobile) — wrapping to a second line keeps every action reachable. */
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.kw-agentbar--stage .kw-agentbar-chip {
+  pointer-events: auto;
+  flex: 0 0 auto;
+}
+
+/* tile: a small agent "card" pinned in a corner of the stage — its own little presence. */
+.kw-agentbar--tile {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 7;
+  width: min(220px, 60%);
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(18, 20, 24, 0.85);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.kw-agentbar--tile .kw-agentbar-row {
+  flex-direction: column;
+  align-items: stretch;
+}
+.kw-agentbar--tile .kw-agentbar-chip {
+  text-align: center;
+}
+
+/* controls: a 🤖 button in the control bar that pops the actions above it. */
+.kw-agentbar-ctrlwrap {
+  position: relative;
+  display: inline-flex;
+}
+.kw-agentbar--controls {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  min-width: 180px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(18, 20, 24, 0.97);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+.kw-agentbar--controls .kw-agentbar-row {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* One-time join coachmark: a bubble above the agent button that points a first-timer at the menu + the
+   voice cue ("say 'hey friend'"). Anchored like the popover; an arrow points down at the button. */
+.kw-agentbar-coach {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  z-index: 40;
+  width: 220px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--kw-agent-accent, #3fb950);
+  background: rgba(18, 20, 24, 0.98);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #e6edf3;
+  text-align: left;
+}
+.kw-agentbar-coach strong {
+  display: block;
+  margin-bottom: 3px;
+}
+.kw-agentbar-coach b {
+  color: var(--kw-agent-accent, #3fb950);
+}
+.kw-agentbar-coach-x {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  background: none;
+  border: 0;
+  color: #8b949e;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.kw-agentbar-coach-ok {
+  margin-top: 8px;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--kw-agent-accent, #3fb950);
+  color: #06210f;
+  font-weight: 700;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+}
+.kw-agentbar-coach::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  right: 14px;
+  border: 7px solid transparent;
+  border-top-color: var(--kw-agent-accent, #3fb950);
+}
+/* gentle pulse on the button while the coachmark is up, so the eye is drawn to it */
+.kw-agentbar-ctrlbtn--coach {
+  animation: kw-agentcoach-pulse 1.6s ease-in-out infinite;
+}
+@keyframes kw-agentcoach-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--kw-agent-accent, #3fb950) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+/* the inline "or say 'hey friend'" hint shown beside a menu row's chips */
+.kw-agentbar-wake {
+  font-size: 0.72rem;
+  color: #8b949e;
+  white-space: nowrap;
+  align-self: center;
+}
+
+/* The control-bar trigger button. Icon-only by default; 'labeled' shows icon + agent name + caret,
+   accent-tinted so it reads as the agent's own control rather than a generic icon. */
+.kw-agentbar-ctrlbtn {
+  position: relative;
+}
+.kw-agentbar-ctrlbtn.active {
+  background: color-mix(in srgb, var(--kw-agent-accent) 22%, transparent);
+}
+.kw-agentbar-ctrlbtn.labeled {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--kw-agent-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--kw-agent-accent) 16%, transparent);
+}
+.kw-agentbar-ctrlbtn.labeled:hover {
+  background: color-mix(in srgb, var(--kw-agent-accent) 26%, transparent);
+}
+.kw-agentbar-ctrllabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--kw-agent-accent) 35%, white);
+}
+.kw-agentbar-caret {
+  font-size: 10px;
+  opacity: 0.7;
+}
+.kw-agentbar--size-large .kw-agentbar-ctrllabel {
+  font-size: 15px;
+}
+
+/* ── Agents menu (master checklist; per-viewer show/hide) ─────────────────────────── */
+.kw-agentsmenu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.kw-agentsmenu-btn .kw-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+.kw-agentsmenu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  min-width: 220px;
+  max-width: min(320px, 86vw);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(18, 20, 24, 0.97);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+.kw-agentsmenu-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+  padding: 2px 4px 8px;
+}
+.kw-agentsmenu-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 4px;
+  border-top: 0;
+}
+.kw-agentsmenu-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.kw-agentsmenu-check input {
+  accent-color: var(--kw-agent-accent);
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.kw-agentsmenu-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.kw-agentsmenu-hidden {
+  font-size: 11.5px;
+  opacity: 0.5;
+  padding-left: 24px;
+}
+.kw-agentsmenu .kw-agentbar-row {
+  padding-left: 24px;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════════════════
+   LAYOUT TAXONOMY — per-cell layouts on the orthogonal kw-haschat / kw-hasstage axes (set in Widget.tsx).
+   Placed LAST so a cell wins source-order over the older gated .kw-fillwin/.kw-full .kw-staging rules (same
+   specificity). One cell at a time; each verified on-device.
+
+   CELL ▸ landscape · STAGE · no chat   →   .kw-hasstage:not(.kw-haschat)
+   Presenter view with chat CLOSED: the stage fills the panel (full width), participants ride a tidy horizontal
+   strip UNDERNEATH (not a right-side column that the staged video overlaps/clips), controls stay in the bottom
+   bar. This is the orthogonal (chat-free) twin of the chatsplit stage-on-top layout. */
+@media (orientation: landscape) {
+  /* ONE source of truth for the faces-strip height, reused by the strip itself AND the staged-video/widget
+     overlay's bottom offset (they must agree so the overlay stops exactly at the strip's top edge). Declared on
+     the PANEL — the common ancestor of both .kw-stagewrap (the strip) and the panel-level .kw-staged-vid /
+     .kw-stage-widget overlays — so the var cascades to all three (the overlays are NOT inside .kw-stagewrap).
+     It was width-only (13vw) → on a WIDE+SHORT desktop window a too-tall strip crushed the stage (the share/table
+     vanished). Now ALSO capped by viewport HEIGHT (30vh) so a short window keeps the stage usable. */
+  .kw-hasstage:not(.kw-haschat) {
+    --kw-strip-h: clamp(92px, min(13vw, 30vh), 220px);
+  }
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap {
+    flex-direction: column; /* stage on top + faces strip under — NOT a stage|side row */
+    align-items: stretch;
+  }
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-stage {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    max-height: none;
+  }
+  /* the faces: a short FULL-WIDTH strip along the bottom (horizontal, scroll-x), never a right column */
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-side {
+    flex: 0 0 auto;
+    width: auto;
+    height: var(--kw-strip-h);
+    max-height: 40%;
+    border-left: 0;
+    border-top: 0;
+    background: transparent; /* all-black: the tile AREA is pure black; the TILES are the bubbles on it */
+    overflow: visible; /* let the absolutely-positioned pen toolbar (below) float ABOVE the strip onto the stage */
+  }
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-side .kw-faces {
+    flex: 1 1 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: stretch;
+    width: auto;
+    height: 100%;
+    padding: 6px;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden; /* tiles are clipped to this box — they can never bleed UP out of the strip */
+    touch-action: pan-x;
+    /* The dark stage overlay (.kw-stage-widget / .kw-staged-vid, #000, z-index:8) is panel-anchored, so on a
+       short window its bottom edge can land a few px INTO the strip and paint over the tiles' tops. Raise the
+       tiles ABOVE the overlay so they are ALWAYS fully painted (whole boxes, rounded corners), regardless of the
+       overlay's exact bottom. This sits on .kw-faces (NOT .kw-side) so the .kw-toolslot — a sibling that must stay
+       anchored to .kw-stagewrap to float onto the stage — is unaffected (.kw-side stays position:static). */
+    position: relative;
+    z-index: 9;
+  }
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-side .kw-faces .tile {
+    flex: 0 0 auto;
+    height: 100%;
+    width: auto;
+    aspect-ratio: 4 / 3; /* less rectangular than 16/9 — better for a face/camera tile */
+  }
+  /* On a SHORT strip the avatar (.face, tile-scaled) and the bottom name pill (.tag) collide. Pin the avatar's
+     own box to leave room beneath it for the pill, and keep the pill compact + on a translucent chip so it reads
+     over the avatar's edge instead of merging with it. Scoped to this stage strip — gallery/speaker untouched. */
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-side .kw-faces .tile .face {
+    font-size: clamp(1rem, 22cqmin, 3rem); /* smaller than the gallery avatar so a short strip tile isn't all-letter */
+  }
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-side .kw-faces .tile .tag {
+    bottom: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 8px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: clamp(0.55rem, 6cqmin, 0.8rem);
+    background: rgba(0, 0, 0, 0.72);
+  }
+  /* the staged-video overlay fills the STAGE area (above the strip), not the whole panel. The base 52px TOP
+     padding clears the header, but on a SHORT window it ate a third of the stage and shrank the share/table to a
+     stamp — make it responsive (min of 52px and 8vh) so a short window gives the content room. Bottom is small
+     since the pen toolbar floats (it no longer needs clearing here). */
+  .kw-hasstage:not(.kw-haschat) .kw-staged-vid,
+  .kw-hasstage:not(.kw-haschat) .kw-stage-widget {
+    bottom: var(--kw-strip-h);
+    padding-top: min(52px, 8vh);
+    padding-bottom: 10px;
+  }
+  /* EXTREME-SHAPE FIT: at a very wide+short window the stage box is a long letterbox. Don't let the staged
+     content stretch edge-to-edge — CAP the staged TABLE/widget to a sensible max width (~2.2× the stage height
+     via a vh proxy) so it sits CENTERED (the flex body already centres on both axes) with black side-margins,
+     natural proportions; at a normal-width window 220vh exceeds the box so this is a no-op. (The staged VIDEO
+     fits the same way via object-fit:contain.) `!important` because the base `.kw-stage-widget-body > *`
+     max-width:100% otherwise wins the cascade here despite this rule's higher specificity + later order. The
+     body still scrolls a genuinely tall widget. */
+  .kw-hasstage:not(.kw-haschat) .kw-stage-widget-body > * {
+    max-width: 220vh !important;
+    flex: 0 1 auto;
+  }
+  /* DEFECT 2: the ink/pen toolbar is portaled into .kw-toolslot INSIDE .kw-side, where as a flex row it ate the
+     strip's height (squishing the tiles + colliding with their labels) on a short window. Float it ABSOLUTELY over
+     the bottom-centre of the STAGE (it annotates the share — over-the-stage is the natural place), so it consumes
+     NO strip height. It anchors to .kw-stagewrap (position:relative; .kw-side is static), sitting just above the
+     strip. Pointer-events stay on the bar itself; the slot is otherwise inert. */
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-side .kw-toolslot {
+    position: absolute;
+    left: auto;
+    right: 8px;
+    bottom: 64px; /* a row just ABOVE the bottom-right control bar (mirrors the chat layout's pen-above-composer) */
+    top: auto;
+    z-index: 11; /* above the bottom-right control bar (z-index:10) */
+    width: auto;
+    padding: 0;
+    display: flex;
+    justify-content: flex-end;
+    opacity: 1; /* never auto-hide — the pen stays put while only the top title strip collapses */
+    pointer-events: none; /* only the bar opts back in (its own pointer-events:auto), so the stage stays draggable */
+  }
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-side .kw-toolslot .kw-ink-bar {
+    pointer-events: auto;
+  }
+  /* FIT, never crop: a staged clip/video shows its WHOLE frame (natural aspect, letterboxed with black margins)
+     rather than cropping the edges to fill — esp. at extreme window shapes. `contain` keeps the aspect; the box
+     centres it. (Flip back to `cover` only if you want a cropped fill.) BOTH chat-open and chat-closed. */
+  .kw-hasstage .kw-staged-vid video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+}
+
+/* CELL ▸ portrait · STAGE · no chat   →   .kw-hasstage:not(.kw-haschat)
+   Portrait presenter with chat CLOSED: the stage fills the panel width on top (it has the tall portrait canvas
+   to itself); participants ride a short FULL-WIDTH strip underneath (horizontal scroll); controls in the bottom
+   bar. The portrait twin of the landscape stage-on-top cell. (Chat-OPEN portrait is the kw-chatsplit :has(.kw-side)
+   grid above — shared screen on top, chat + a tiles column below — so it stays on that path.) The strip sizes off
+   HEIGHT (vh), not width like the landscape cell, so it isn't crushed on a narrow phone. */
+@media (orientation: portrait) {
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap {
+    flex-direction: column; /* stage on top + faces strip under — NOT a stage|side row */
+    align-items: stretch;
+  }
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-stage {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    max-height: none;
+  }
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-side {
+    flex: 0 0 auto;
+    width: auto;
+    height: clamp(92px, 16vh, 180px);
+    max-height: 30%;
+    border-left: 0;
+    border-top: 0;
+    background: transparent; /* all-black: the tile AREA is pure black; the TILES are the bubbles on it */
+    overflow: hidden;
+  }
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-side .kw-faces {
+    flex: 1 1 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: stretch;
+    width: auto;
+    height: 100%;
+    padding: 6px;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x;
+  }
+  .kw-hasstage:not(.kw-haschat) .kw-stagewrap .kw-side .kw-faces .tile {
+    flex: 0 0 auto;
+    height: 100%;
+    width: auto;
+    aspect-ratio: 4 / 3; /* less rectangular than 16/9 — better for a face/camera tile */
+  }
+  /* the staged overlay covers EXACTLY the stage region, not the whole panel. In PORTRAIT the faces strip AND the
+     in-flow control bar sit BELOW the stage (in landscape the bar is absolute, so the strip alone sufficed). Pin the
+     overlay's top/bottom to the live .kw-stage box (--kw-stage-top / --kw-stage-bot, published by a RO in Widget.tsx)
+     so the transport never lands over the strip/self-tile, and the overlay tracks the stage as it reflows on
+     auto-hide — keeping the doodle (anchored to .kw-stage) aligned with the video. Fallback (pre-measure / a widget
+     with no .kw-stage): the header top + strip-plus-a-bar-row bottom. */
+  .kw-hasstage:not(.kw-haschat) .kw-staged-vid,
+  .kw-hasstage:not(.kw-haschat) .kw-stage-widget {
+    top: var(--kw-stage-top, 52px);
+    bottom: var(--kw-stage-bot, calc(clamp(92px, 16vh, 180px) + 88px));
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .kw-hasstage:not(.kw-haschat) .kw-staged-vid video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain; /* FIT the whole frame (natural aspect, black margins) — never crop at extreme shapes */
+  }
+}
+
+/* #2 chat width: ONE variable so the chat column + the pinned header/summon + the staged-video offset all track
+   it. The old min(360px,40%) capped at 360 → too narrow on a wide desktop; clamp scales it up to 560. */
+.kw-chatsplit {
+  --kw-chatw: clamp(340px, 34%, 560px);
+}
+
+/* Summon CTA + staged "summoning…" progress — the first-call experience (Widget.tsx summon nudge). */
+@keyframes kw-spin { to { transform: rotate(360deg); } }
+.kw-summon-spin {
+  width: 18px; height: 18px; flex: none;
+  border: 2px solid rgba(120, 110, 255, 0.3);
+  border-top-color: rgba(120, 110, 255, 0.95);
+  border-radius: 50%;
+  animation: kw-spin 0.8s linear infinite;
+}
+.kw-summon-cta {
+  border: none; border-radius: 10px; padding: 11px 22px;
+  font: inherit; font-weight: 700; font-size: 1.05em;
+  background: rgba(120, 110, 255, 0.95); color: #fff; cursor: pointer;
+  box-shadow: 0 2px 10px rgba(120, 110, 255, 0.4);
+}
+.kw-summon-cta:active { transform: translateY(1px); }
+.kw-summon-cta:disabled { opacity: 0.7; cursor: default; box-shadow: none; }
+
+/* Pre-join "Joining…" spinner — inline, inherits the button's text colour (currentColor). Reuses @keyframes kw-spin. */
+.kw-join-spin {
+  display: inline-block; width: 0.85em; height: 0.85em; margin-right: 0.45em; vertical-align: -0.1em;
+  border: 0.13em solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: kw-spin 0.8s linear infinite;
+}
+/* Lobby-skip "joining…" splash — centred spinner + text where the pre-join lobby would be, so an autoJoin reads
+   as one smooth hop into the call (no flash of the lobby while the room connects). */
+.kw-lobby.kw-autojoin { align-items: center; justify-content: center; min-height: 55vh; max-width: none; background: #000; }
+.kw-autojoin-inner { display: flex; flex-direction: column; align-items: center; gap: 14px; color: #2563eb; }
+.kw-autojoin-inner .kw-join-spin { width: 2.2em; height: 2.2em; margin: 0; border-width: 0.14em; }
+.kw-autojoin-tx { margin: 0; font-weight: 600; font-size: 1.05rem; color: #c9d4de; }
+/* autoJoin gesture gate (needsGesture): a full-screen CALL-THEMED tile (dark, accent border) you tap to enter + unlock
+   audio — so the gate → in-call is one smooth dark hop, not a flash of the light lobby. */
+.kw-autojoin-gate { padding: 10px; }
+.kw-autojoin-tap {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+  width: 100%; flex: 1 1 auto; min-height: 72vh; box-sizing: border-box; padding: 24px;
+  background: #0b0f14; color: #e6edf3; font: inherit;
+  border: 2px solid var(--kw-accent, #2563eb); border-radius: 16px;
+  box-shadow: inset 0 0 44px -20px var(--kw-accent, #2563eb), 0 12px 44px rgba(0, 0, 0, 0.5);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.kw-autojoin-tap:active { transform: scale(0.99); }
+.kw-autojoin-play { display: flex; align-items: center; justify-content: center; width: 3em; height: 3em; border-radius: 50%; background: var(--kw-accent, #2563eb); color: #fff; font-size: 1.5em; padding-left: 0.14em; box-shadow: 0 8px 26px rgba(37, 99, 235, 0.5); }
+.kw-autojoin-mic { padding-left: 0; } /* the mic icon centers on its own (no play-glyph offset) */
+.kw-autojoin-mic svg { width: 1.4em; height: 1.4em; }
+
+/* "Return home" splash — covers the whole panel while we redirect to the brand's back-link (e.g. the gift
+   dashboard) on leaving a call or closing the pre-join, so neither the pre-join nor the app's landing flashes
+   behind the navigation. Above every in-panel layer; matches the panel base so there's no seam. Language-neutral
+   (a spinner, no words). Reuses @keyframes kw-spin. */
+.kw-returning {
+  position: absolute;
+  inset: 0;
+  z-index: 2147483646; /* above every in-panel layer (fullscreen video, toasts, resize handles) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000; /* == .kw-panel base, so the cover is seamless */
+  color: #e6edf3;
+  animation: kw-returning-in 120ms ease-out;
+}
+@keyframes kw-returning-in { from { opacity: 0; } to { opacity: 1; } }
+.kw-returning-spin {
+  display: inline-block; width: 26px; height: 26px;
+  border: 3px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  opacity: 0.7;
+  animation: kw-spin 0.8s linear infinite;
+}
+
+/* Agent state indicators (CallSurface) — motion + colour, NO emoji. Listening = cyan waveform; thinking/working =
+   amber spinner (reuses @keyframes kw-spin); dormant = a dim still dot. Sized in em so the same glyph works in the
+   small corner pill and the big voice-only centerpiece. currentColor lets each carry its own state colour. */
+@keyframes kw-eq {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+.kw-eq {
+  display: inline-flex; align-items: center; gap: 0.12em; height: 0.85em;
+  color: #3fd0e6; vertical-align: middle;
+}
+.kw-eq i {
+  display: block; width: 0.18em; height: 100%; border-radius: 0.1em;
+  background: currentColor; transform-origin: center;
+  animation: kw-eq 0.95s ease-in-out infinite;
+}
+.kw-eq i:nth-child(2) { animation-delay: 0.16s; }
+.kw-eq i:nth-child(3) { animation-delay: 0.32s; }
+.kw-eq i:nth-child(4) { animation-delay: 0.48s; }
+.kw-spin2 {
+  display: inline-block; width: 0.85em; height: 0.85em;
+  border: 0.13em solid currentColor; border-right-color: transparent; border-radius: 50%;
+  color: #f5b73f; vertical-align: middle;
+  animation: kw-spin 0.8s linear infinite;
+}
+.kw-statedot {
+  display: inline-block; width: 0.5em; height: 0.5em; border-radius: 50%;
+  background: currentColor; color: rgba(255, 255, 255, 0.4); vertical-align: middle;
+}
+/* Scale the glyph up in the voice-only centerpiece (it sits where the avatar would be). */
+.tile-busy-emoji .kw-eq { height: 1.1em; }
+.tile-busy-emoji .kw-spin2 { width: 1.1em; height: 1.1em; }
+
+/* Live variant of the listening waveform: a mic analyser drives each bar's scaleY per frame (ListenWave), so the
+   idle keyframe must stand down. (No stream / muted ⇒ the plain .kw-eq idle pulse runs.) */
+.kw-eq.kw-eq--live i { animation: none; }
+
+/* ============================================================================
+   Floating agent-control bubble (AgentBubble / AgentBubbleLayer) — a draggable
+   pill per agent that expands into a mini control panel. Behind brand.agentBubble.
+   Spec: docs/floating-agent-control.md (kibitz repo).
+   ============================================================================ */
+/* Above the stage overlays (.kw-staged-vid z8 / ink z9 / stage controls z10) so the bubble floats over a
+   staged image/video/screen-share too — but below the menus/toasts (z30+) so those still cover it. The
+   layer is a stacking context, so the bubble's own z-indexes (pill/scrim/open/dragging) stack within it. */
+.kw-agb-layer { position: absolute; inset: 0; z-index: 12; pointer-events: none; transform: translateZ(0); }
+/* ^ translateZ promotes the WHOLE bubble group to its own compositing layer, so it paints above the
+   speaker/stage share <video> (a hardware overlay above the DOM on Android that z-index alone can't beat —
+   same reason the stage controls do it, widget.css ~423). Without this the pill hid behind the speaker
+   video ("can't drag onto the speaker tile / a border at the chat edge"). NB: this makes the layer the
+   containing block for the rate overlay's position:fixed → the rate modal centers on the body region. */
+.kw-agb {
+  position: absolute; left: 0; top: 0; z-index: 6; pointer-events: auto;
+  --c: #7382a4; --agb-s: 1; color: #eaeefb; will-change: transform;
+  /* --agb-s (JS sets it from the container width) scales the WHOLE bubble so it isn't tiny on a big desktop.
+     Sizes below are calc(px|rem * var(--agb-s)) = real layout scaling (not transform → drag math stays exact). */
+}
+.kw-agb[data-open="true"] { z-index: 9; }
+.kw-agb.kw-agb--dragging { z-index: 20; }
+.kw-agb[data-state="summoning"] { --c: var(--kw-accent, #3b7bff); }
+.kw-agb[data-state="engaged"][data-activity="listening"] { --c: #2dd4bf; }
+.kw-agb[data-state="engaged"][data-activity="speaking"] { --c: #4ade80; }
+
+/* collapsed pill */
+.kw-agb-pill {
+  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: calc(8px * var(--agb-s));
+  padding: calc(6px * var(--agb-s)) calc(12px * var(--agb-s)) calc(6px * var(--agb-s)) calc(7px * var(--agb-s)); border-radius: 999px; cursor: grab; touch-action: none;
+  background: rgba(20, 27, 46, 0.97); border: 1.5px solid rgba(255, 255, 255, 0.55);
+  /* a light outline + a dark halo so the bubble reads on ANY background (bright stage, video, doodle). */
+  box-shadow: 0 8px 20px -12px rgba(0, 0, 0, 0.8), 0 0 0 3px rgba(0, 0, 0, 0.32); color: #eaeefb;
+  -webkit-tap-highlight-color: transparent; user-select: none;
+  transform: translateZ(0); /* own compositing layer → paints ABOVE the stage share <video> (which on
+                               Android composites as a hardware overlay above the DOM); same fix the stage
+                               controls use (widget.css ~423), so the pill stays visible over a stage. */
+}
+.kw-agb-pill:focus-visible { outline: 2px solid var(--kw-accent, #3b7bff); outline-offset: 3px; }
+.kw-agb--dragging .kw-agb-pill { cursor: grabbing; transform: scale(1.04); box-shadow: 0 16px 30px -14px rgba(0, 0, 0, 0.85); }
+.kw-agb[data-state="engaged"] .kw-agb-pill {
+  border-color: color-mix(in srgb, var(--c) 60%, rgba(255, 255, 255, 0.14));
+  box-shadow: 0 8px 20px -12px rgba(0, 0, 0, 0.8), 0 0 0 2.5px color-mix(in srgb, var(--c) 22%, transparent);
+}
+.kw-agb[data-open="true"] .kw-agb-pill { opacity: 0.5; }
+.kw-agb-grip { width: calc(4px * var(--agb-s)); height: calc(15px * var(--agb-s)); flex: none; border-radius: 2px; background: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.5) 0 2px, transparent 2px 4px); opacity: 0.4; }
+.kw-agb-avatar { width: calc(24px * var(--agb-s)); height: calc(24px * var(--agb-s)); border-radius: 50%; flex: none; display: grid; place-items: center; font-size: calc(0.9rem * var(--agb-s)); line-height: 1; background: rgba(59, 123, 255, 0.16); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset; }
+.kw-agb-pillcopy { display: inline-flex; align-items: center; gap: 7px; padding-right: 2px; }
+.kw-agb-word { font-size: calc(0.8rem * var(--agb-s)); font-weight: 600; line-height: 1; color: #eaeefb; white-space: nowrap; }
+.kw-agb[data-state="absent"] .kw-agb-word, .kw-agb[data-state="summoning"] .kw-agb-word { color: #8f9cbd; }
+.kw-agb[data-state="engaged"] .kw-agb-word { color: var(--c); }
+
+/* status dot (no waveform) */
+.kw-agb-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--c); opacity: 0.85; }
+.kw-agb[data-state="ready"][data-scribe="off"] .kw-agb-dot { opacity: 0.3; }
+.kw-agb[data-state="engaged"] .kw-agb-dot { animation: kw-agb-pulse 1.5s ease-in-out infinite; }
+.kw-agb[data-state="summoning"] .kw-agb-dot { width: 12px; height: 12px; background: none; border: 2px solid color-mix(in srgb, var(--c) 30%, transparent); border-top-color: var(--c); animation: kw-agb-spin 0.8s linear infinite; }
+@keyframes kw-agb-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.78); } }
+@keyframes kw-agb-spin { to { transform: rotate(360deg); } }
+
+/* expanded panel (JS sets top/bottom/left/width/maxHeight inline) */
+.kw-agb-panel {
+  position: absolute; display: grid; gap: calc(11px * var(--agb-s)); padding: calc(10px * var(--agb-s)) calc(14px * var(--agb-s)) calc(14px * var(--agb-s)); box-sizing: border-box;
+  border-radius: calc(18px * var(--agb-s));
+  /* somewhat transparent + a frosted blur so it stays legible over a busy stage / video behind it */
+  background: linear-gradient(180deg, rgba(26, 35, 64, 0.82), rgba(20, 28, 48, 0.82));
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 26px 56px -26px rgba(0, 0, 0, 0.9);
+  color: #eaeefb; overflow-y: auto; animation: kw-agb-in 0.18s ease;
+  transform: translateZ(0); /* paint above the stage share <video> (hardware overlay), like the pill */
+}
+@keyframes kw-agb-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+/* Full-width, ~18px-tall grab strip so it's an easy tap target (tap = collapse, drag = reposition); the visible
+   34×4 pill is drawn by ::before so the hit area can be much larger than the handle. */
+.kw-agb-dragbar { width: 100%; padding: 8px 0 5px; display: flex; justify-content: center; cursor: pointer; touch-action: none; }
+.kw-agb-dragbar::before { content: ''; width: 34px; height: 4px; border-radius: 999px; background: rgba(143, 156, 189, 0.45); }
+.kw-agb--dragging .kw-agb-dragbar { cursor: grabbing; }
+.kw-agb-head { display: flex; align-items: center; gap: calc(9px * var(--agb-s)); cursor: grab; touch-action: none; }
+.kw-agb--dragging .kw-agb-head { cursor: grabbing; }
+.kw-agb-head .kw-agb-avatar { width: calc(34px * var(--agb-s)); height: calc(34px * var(--agb-s)); font-size: calc(1.05rem * var(--agb-s)); }
+.kw-agb-id { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.kw-agb-name { font-size: calc(0.92rem * var(--agb-s)); font-weight: 680; }
+.kw-agb-status { display: inline-flex; align-items: center; gap: calc(7px * var(--agb-s)); font-size: calc(0.76rem * var(--agb-s)); color: #8f9cbd; }
+.kw-agb-status .kw-agb-word { font-size: calc(0.76rem * var(--agb-s)); }
+.kw-agb[data-state="engaged"] .kw-agb-status .kw-agb-word { color: var(--c); }
+.kw-agb-expand { all: unset; cursor: pointer; width: calc(28px * var(--agb-s)); height: calc(28px * var(--agb-s)); display: grid; place-items: center; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1); color: #8f9cbd; flex: none; }
+.kw-agb-expand:hover { color: #eaeefb; background: rgba(255, 255, 255, 0.05); }
+.kw-agb-expand:focus-visible { outline: 2px solid var(--kw-accent, #3b7bff); outline-offset: 2px; }
+.kw-agb-chev { display: inline-block; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform 0.2s; margin-top: -2px; }
+.kw-agb-expand[aria-expanded="true"] .kw-agb-chev { transform: rotate(-135deg); margin-top: 2px; }
+.kw-agb-chev--sm { width: 6px; height: 6px; transform: rotate(-45deg); margin: 0; }
+.kw-agb-caphead[aria-expanded="true"] .kw-agb-chev--sm { transform: rotate(45deg); }
+
+/* details drawer */
+.kw-agb-drawer { display: grid; gap: 10px; }
+.kw-agb-statetext { font-size: calc(0.8rem * var(--agb-s)); color: #8f9cbd; line-height: 1.45; margin: 0; }
+.kw-agb-caps { border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; overflow: hidden; }
+.kw-agb-caphead { all: unset; cursor: pointer; box-sizing: border-box; width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: calc(10px * var(--agb-s)) calc(12px * var(--agb-s)); }
+.kw-agb-caphead:hover { background: rgba(255, 255, 255, 0.03); }
+.kw-agb-caphead:focus-visible { outline: 2px solid var(--kw-accent, #3b7bff); outline-offset: -2px; }
+.kw-agb-capcore { font-size: calc(0.84rem * var(--agb-s)); font-weight: 620; color: #eaeefb; }
+.kw-agb-caplist { list-style: none; margin: 0; padding: 0 12px 11px; display: grid; gap: 7px; }
+.kw-agb-cap { all: unset; cursor: pointer; font-size: calc(0.79rem * var(--agb-s)); color: #8f9cbd; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
+.kw-agb-cap::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--kw-accent, #3b7bff); opacity: 0.75; flex: none; }
+.kw-agb-cap:hover { color: #eaeefb; }
+.kw-agb-capnone { font-size: calc(0.78rem * var(--agb-s)); color: #8f9cbd; }
+
+/* primary control — says the hand-off phrase */
+.kw-agb-primary {
+  all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: calc(13px * var(--agb-s)); border-radius: calc(14px * var(--agb-s)); font-weight: 640; font-size: calc(0.95rem * var(--agb-s)); text-align: center;
+  background: var(--kw-accent, #3b7bff); color: #fff; box-shadow: 0 10px 22px -12px rgba(0, 0, 0, 0.6);
+  -webkit-tap-highlight-color: transparent; transition: transform 0.08s, background 0.2s;
+}
+.kw-agb-primary:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.kw-agb-primary:active { transform: scale(0.98); }
+.kw-agb-primary[data-kind="disengage"] { background: rgba(20, 28, 48, 0.92); border: 1px solid rgba(255, 255, 255, 0.12); color: #eaeefb; box-shadow: none; }
+.kw-agb-primary[disabled] { background: rgba(20, 28, 48, 0.92); border: 1px solid rgba(255, 255, 255, 0.12); color: #8f9cbd; cursor: default; box-shadow: none; }
+.kw-agb-spin { width: 15px; height: 15px; border-radius: 50%; border: 2px solid rgba(143, 156, 189, 0.4); border-top-color: #8f9cbd; animation: kw-agb-spin 0.8s linear infinite; }
+
+/* secondary row — scribe (play/pause) + leave */
+.kw-agb-secondary { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.kw-agb-secondary[data-solo="true"] { grid-template-columns: 1fr; }
+.kw-agb-sbtn { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; padding: calc(9px * var(--agb-s)); border-radius: calc(11px * var(--agb-s)); font-size: calc(0.8rem * var(--agb-s)); font-weight: 560; background: rgba(20, 28, 48, 0.9); border: 1px solid rgba(255, 255, 255, 0.1); color: #eaeefb; }
+.kw-agb-sbtn:focus-visible { outline: 2px solid var(--kw-accent, #3b7bff); outline-offset: 2px; }
+.kw-agb-sbtn:active { transform: scale(0.96); }
+.kw-agb-leave { color: #8f9cbd; }
+.kw-agb-leave:hover { border-color: #ff7a80; color: #ff7a80; }
+/* Armed (first tap) → warning-red so the confirm state reads clearly; a second tap actually removes the agent. */
+.kw-agb-leave.armed { color: #ff7a80; border-color: #ff7a80; background: rgba(255, 122, 128, 0.14); }
+.kw-agb-ico { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; color: #2dd4bf; }
+.kw-agb-listen[aria-pressed="true"] .kw-agb-ico, .kw-agb-listen[aria-pressed="true"] { color: #8f9cbd; }
+.kw-agb-pause { display: inline-flex; gap: 3px; }
+.kw-agb-pause i { width: 3px; height: 12px; background: currentColor; border-radius: 1px; display: block; }
+.kw-agb-play { width: 0; height: 0; border-style: solid; border-width: 6px 0 6px 11px; border-color: transparent transparent transparent currentColor; display: none; }
+.kw-agb-listen[aria-pressed="true"] .kw-agb-pause { display: none; }
+.kw-agb-listen[aria-pressed="true"] .kw-agb-play { display: inline-block; }
+
+/* rate-the-agent (brand host menu) — a subtle tertiary button in the panel */
+/* Rate = a lone STAR in the panel header (opens the rating overlay); the old text button + bottom-bar entry are gone. */
+.kw-agb-rate { all: unset; box-sizing: border-box; cursor: pointer; width: calc(28px * var(--agb-s)); height: calc(28px * var(--agb-s)); display: grid; place-items: center; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1); font-size: calc(1rem * var(--agb-s)); line-height: 1; color: #f5c451; flex: none; }
+.kw-agb-rate:hover { color: #ffd873; border-color: rgba(245, 196, 81, 0.45); }
+.kw-agb-rate:active { transform: scale(0.97); }
+.kw-agb-rate:focus-visible { outline: 2px solid var(--kw-accent, #3b7bff); outline-offset: 2px; }
+
+/* First-run NUDGE — a callout above the summon pill that draws the eye until the agent is called. It lives inside
+   .kw-agb (the transformed root, positioned at the pill), so it tracks the pill; the ::after arrow points down to it. */
+.kw-agb-nudge {
+  position: absolute; right: 2px; bottom: calc(100% + 12px); z-index: 10;
+  width: max-content; max-width: calc(190px * var(--agb-s)); padding: calc(8px * var(--agb-s)) calc(12px * var(--agb-s)); border-radius: 12px; box-sizing: border-box;
+  font-size: calc(0.78rem * var(--agb-s)); font-weight: 640; line-height: 1.25; text-align: center; color: #08122b;
+  background: var(--kw-accent, #3b7bff); box-shadow: 0 12px 26px -12px rgba(0, 0, 0, 0.85);
+  pointer-events: none; animation: kw-agb-nudge-in 0.28s ease both, kw-agb-nudge-bob 2.4s ease-in-out 0.5s infinite;
+}
+.kw-agb-nudge::after { content: ''; position: absolute; top: 100%; right: 20px; width: 0; height: 0; border: 6px solid transparent; border-top-color: var(--kw-accent, #3b7bff); }
+@keyframes kw-agb-nudge-in { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes kw-agb-nudge-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+/* the pill itself pulses a ring while the nudge is up */
+.kw-agb-pill[data-nudge="true"] { animation: kw-agb-pill-nudge 1.8s ease-in-out infinite; }
+@keyframes kw-agb-pill-nudge {
+  0%, 100% { box-shadow: 0 8px 20px -12px rgba(0, 0, 0, 0.8), 0 0 0 0 color-mix(in srgb, var(--kw-accent, #3b7bff) 55%, transparent); }
+  50% { box-shadow: 0 8px 20px -12px rgba(0, 0, 0, 0.8), 0 0 0 8px color-mix(in srgb, var(--kw-accent, #3b7bff) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kw-agb-nudge { animation: kw-agb-nudge-in 0.28s ease both; }
+  .kw-agb-pill[data-nudge="true"] { animation: none; }
+}
+
+/* room-creator credit panel (in the drawer): live coupon balance + a Top-up checkout link */
+.kw-agb-credit { display: grid; gap: 7px; padding: 9px 11px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 11px; }
+.kw-agb-creditrow { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.kw-agb-creditlabel { font-size: calc(0.78rem * var(--agb-s)); color: #8f9cbd; }
+.kw-agb-creditval { font-family: ui-monospace, "SF Mono", monospace; font-size: calc(0.82rem * var(--agb-s)); font-weight: 600; color: #eaeefb; }
+.kw-agb-topup { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: calc(8px * var(--agb-s)); border-radius: 10px; font-size: calc(0.78rem * var(--agb-s)); font-weight: 560; color: var(--kw-accent, #3b7bff); border: 1px solid color-mix(in srgb, var(--kw-accent, #3b7bff) 45%, transparent); }
+.kw-agb-topup:hover { background: color-mix(in srgb, var(--kw-accent, #3b7bff) 12%, transparent); }
+.kw-agb-topup:focus-visible { outline: 2px solid var(--kw-accent, #3b7bff); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kw-agb-dot, .kw-agb-spin, .kw-agb-panel { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+}

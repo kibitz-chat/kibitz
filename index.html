@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <title>Kibitz — look at anything together, anywhere on the web</title>
+    <meta name="description" content="Open a room with a link and you're side by side over whatever's on your screen — with anyone, even agentic AI. Peer-to-peer, end-to-end encrypted, no accounts; no server can see or hear you." />
+    <meta name="theme-color" content="#faf6ef" />
+    <meta property="og:title" content="Kibitz" />
+    <meta property="og:description" content="Open a room with a link and you're side by side over whatever's on your screen — with anyone, even agentic AI. Peer-to-peer, end-to-end encrypted, no accounts; no server can see or hear you." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://kibitz.chat" />
+    <!-- og:image so a shared room link previews with the app icon (crisp), not a favicon a crawler upscales to
+         mush. Absolute URL is required by crawlers; a REBRAND rewrites the host below. -->
+    <meta property="og:image" content="https://kibitz.chat/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:image" content="https://kibitz.chat/icon-512.png" />
+    <!-- LLM-readable site map + full text (the llms.txt convention) — so an agent can
+         understand Kibitz without parsing JS-rendered HTML. -->
+    <link rel="alternate" type="text/markdown" title="llms.txt" href="/llms.txt" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <h1>Kibitz — look at anything together, anywhere on the web</h1>
+      <p>
+        Kibitz is a free, browser-based way to be side by side over anything on your screen — with anyone, even
+        agentic AI. No accounts, no installs, no app to download — share a link and you're together. Voice, video and
+        screen-sharing are built in, peer-to-peer.
+      </p>
+      <p>
+        Share a tab or your whole screen in one click — everyone watches live, and anyone you invite can join from a
+        plain link with nothing to install. You can even invite an AI agent into the room to see what you see. Site
+        owners can <a href="/docs">embed Kibitz in one line</a>.
+      </p>
+      <h2>How calls work (the media path)</h2>
+      <p>
+        Media is <strong>direct peer-to-peer WebRTC</strong>, encrypted <strong>end-to-end</strong> with DTLS-SRTP.
+        When two networks can't connect directly, an encrypted <strong>TURN relay</strong> forwards the call but
+        cannot decrypt it. There is <strong>no SFU or media server</strong> that decodes, mixes, or records your call.
+        A signaling server is used only to introduce two browsers to each other (a temporary peer id, the room name
+        from your link, and network candidates) — it never sees call content.
+      </p>
+      <p>Your name and preferences stay in your browser's local storage. No analytics, no tracking cookies, no ads.</p>
+      <p>
+        Direct calls are free. For the strict networks that can't connect directly, an at-cost relay (priced to cover
+        bandwidth only, no markup) is planned.
+      </p>
+      <p>
+        <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Use</a> ·
+        <a href="/security">Security &amp; architecture</a> ·
+        <a href="/docs">Embed docs</a> · <a href="/relay">Offline mode</a>
+      </p>
+      <p>Please enable JavaScript to start a room.</p>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

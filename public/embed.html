@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Widget demo — Kibitz</title>
+    <meta name="robots" content="noindex" />
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        background: #faf6ef;
+        color: #20262b;
+        font: 16px/1.65 Georgia, 'Times New Roman', serif;
+      }
+      .note {
+        background: #1a7f4e;
+        color: #fff;
+        font: 14px/1.55 system-ui, sans-serif;
+        padding: 13px 16px;
+        text-align: center;
+      }
+      .note p {
+        margin: 0.15em 0;
+      }
+      .note a {
+        color: #fff;
+      }
+      .note-home {
+        display: inline-block;
+        margin-top: 6px;
+        font-size: 13px;
+        opacity: 0.85;
+      }
+      /* An inline link, not a pill: it sits on the text's baseline, so it's always
+         aligned with the sentence — no fragile vertical-centring of a padded box. */
+      #invite {
+        display: inline;
+        background: none;
+        border: 0;
+        margin: 0;
+        padding: 0;
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        text-decoration-thickness: 1.5px;
+        cursor: pointer;
+      }
+      #invite svg {
+        width: 13px;
+        height: 13px;
+        vertical-align: -2px;
+        margin-right: 2px;
+      }
+      #invite:hover {
+        text-decoration-thickness: 2px;
+      }
+      #invite.copied {
+        color: #c8f7dd;
+        text-decoration-color: #c8f7dd;
+      }
+      /* The mic glyph in the prose = the same icon as the round button. */
+      .micic {
+        width: 14px;
+        height: 14px;
+        vertical-align: -2px;
+      }
+      article {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 36px 20px 80px;
+      }
+      h1 {
+        font-size: 1.9rem;
+        line-height: 1.25;
+      }
+      .byline {
+        color: #5c6670;
+        font-size: 0.85rem;
+        font-family: system-ui, sans-serif;
+      }
+      blockquote {
+        border-left: 3px solid #1a7f4e;
+        margin-left: 0;
+        padding-left: 16px;
+        color: #5c6670;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="note">
+      <p>
+        This is a <strong>live Kibitz call</strong>, embedded right in this page — any site adds it with one script tag.
+      </p>
+      <p>
+        Right now it's just you.
+        <button id="invite" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          Copy invite link
+        </button>
+        and send it to a friend — then you both open the
+        <svg class="micic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        mic button (bottom-right) and you're cooking together over the call.
+      </p>
+      <a class="note-home" href="/">← kibitz.chat</a>
+    </div>
+
+    <article>
+      <h1>Sunday Stew, the Long Way</h1>
+      <p class="byline">A recipe you make together, even apart · 3 hr · serves 6</p>
+
+      <p>
+        Some recipes are instructions; this one is an afternoon. You will brown things too slowly, argue gently about
+        bay leaves, and at some point someone will say "it needs more salt" without tasting it. That someone is why
+        the call button exists on this page.
+      </p>
+
+      <blockquote>
+        Cooking the same dish in two kitchens over a call is the closest thing to sharing one. The pot can't travel —
+        the kibitzing can.
+      </blockquote>
+
+      <h2>You'll need</h2>
+      <p>
+        Two pounds of stewing beef, patience, a heavy pot, an onion you'll cry about, four carrots, a friend on the
+        other end who insists their grandmother did it differently. Red wine optional but historically inevitable.
+      </p>
+
+      <h2>The way</h2>
+      <p>
+        Brown the beef in batches — crowding the pot is the only sin this recipe recognizes. Sweat the onion in what's
+        left behind. When your friend's onion finishes first, let them gloat; theirs will be underseasoned and you
+        both know it. Deglaze, return the beef, cover with stock, and now: two hours of low simmering, which is
+        exactly what the floating call window is for. Cards, crossword, or just company while two pots tick away in
+        two cities.
+      </p>
+
+      <p>
+        Carrots in the last forty minutes. Taste before salting. Serve to whoever is in the room — and to whoever is
+        in the call, in spirit.
+      </p>
+    </article>
+
+    <script>
+      // A crypto-random base-36 code (mirrors src/core/roomCode.ts). Reject
+      // bytes ≥ 252 (= 7×36) so every glyph is equally likely; 10 chars is ~52
+      // bits, so an active demo call can't be guessed or fished for.
+      function roomCode(n) {
+        let s = ''
+        while (s.length < n) {
+          for (const b of crypto.getRandomValues(new Uint8Array(n))) {
+            if (b < 252) s += (b % 36).toString(36)
+            if (s.length === n) break
+          }
+        }
+        return s
+      }
+
+      // Room comes from ?room= so the link is shareable; first visitor mints it.
+      const params = new URLSearchParams(location.search)
+      let room = params.get('room')
+      if (!room) {
+        room = 'stew-' + roomCode(10)
+        params.set('room', room)
+        history.replaceState(null, '', '?' + params)
+      }
+      window.__kibitzRoom = room
+
+      // The invite link IS this page's URL (it now carries ?room=). Copying +
+      // sending it is the whole point of the demo, so make that one tap.
+      // Same icons as the widget (core/Widget LinkIcon / CheckIcon) so the cue
+      // reads as one product, not an emoji bolted on.
+      const SVG = (inner) =>
+        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`
+      const LINK_SVG = SVG('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>')
+      const CHECK_SVG = SVG('<polyline points="20 6 9 17 4 12"/>')
+      const invite = document.getElementById('invite')
+      invite.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(location.href)
+        } catch {
+          /* clipboard blocked — the URL bar still holds the shareable link */
+        }
+        invite.innerHTML = CHECK_SVG + ' Copied — now send it'
+        invite.classList.add('copied')
+        setTimeout(() => {
+          invite.innerHTML = LINK_SVG + ' Copy invite link'
+          invite.classList.remove('copied')
+        }, 2200)
+      })
+    </script>
+    <script src="/widget.js"></script>
+    <script>
+      Kibitz.mount({ room: window.__kibitzRoom })
+    </script>
+  </body>
+</html>

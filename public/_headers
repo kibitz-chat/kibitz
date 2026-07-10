@@ -1,0 +1,32 @@
+# Cloudflare Pages response headers.
+#
+# /widget.js is the embed entry point: third-party pages hardcode <script src=".../widget.js">, so it
+# CAN'T be content-hashed like the app's chunks. Pages' default for static assets is
+# `public, max-age=14400, must-revalidate` (4h) — which pins embedders (and our own demo) to a stale
+# widget for up to 4 hours after every deploy. `no-cache` keeps the browser copy but forces a revalidate
+# on each load: a cheap 304 (via ETag) when unchanged, and the fresh bundle the moment a deploy changes
+# it. min-version.json is the kill-switch manifest and must be fresh for the same reason.
+/widget.js
+  Cache-Control: no-cache
+/min-version.json
+  Cache-Control: no-cache
+
+# Declare UTF-8 explicitly on text assets. The app + widget bundles hold Hebrew + emoji (i18n tables, agent
+# labels), and Cloudflare Pages serves them as `application/javascript` with NO charset — a browser/WebView
+# that doesn't inherit the page's encoding would mojibake them. HTML already carries charset=utf-8.
+/*.js
+  Content-Type: application/javascript; charset=utf-8
+/*.mjs
+  Content-Type: application/javascript; charset=utf-8
+/*.json
+  Content-Type: application/json; charset=utf-8
+/*.css
+  Content-Type: text/css; charset=utf-8
+
+# Baseline security headers for every response. nosniff stops MIME-confusion XSS; Referrer-Policy keeps the
+# full URL (a /j-hop link carries gate params on the query) out of cross-origin Referers. A Content-Security-
+# Policy is a separate, larger task: it must enumerate the app's signal/TURN/OIDC/JWKS/widget origins, account
+# for the embeddable widget + inline styles, and ship Report-Only first to confirm it doesn't break the app.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

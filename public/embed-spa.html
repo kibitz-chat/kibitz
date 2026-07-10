@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Widget demo (single-page app) — Kibitz</title>
+    <meta name="robots" content="noindex" />
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        background: #faf6ef;
+        color: #20262b;
+        font: 16px/1.65 Georgia, 'Times New Roman', serif;
+      }
+      .note {
+        background: #1a7f4e;
+        color: #fff;
+        font: 14px/1.55 system-ui, sans-serif;
+        padding: 13px 16px;
+        text-align: center;
+      }
+      .note p {
+        margin: 0.15em 0;
+      }
+      .note a {
+        color: #fff;
+      }
+      .note-home {
+        display: inline-block;
+        margin-top: 6px;
+        font-size: 13px;
+        opacity: 0.85;
+      }
+      /* An inline link, not a pill — sits on the text baseline, always aligned. */
+      #invite {
+        display: inline;
+        background: none;
+        border: 0;
+        margin: 0;
+        padding: 0;
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        text-decoration-thickness: 1.5px;
+        cursor: pointer;
+      }
+      #invite svg {
+        width: 13px;
+        height: 13px;
+        vertical-align: -2px;
+        margin-right: 2px;
+      }
+      #invite:hover {
+        text-decoration-thickness: 2px;
+      }
+      #invite.copied {
+        color: #c8f7dd;
+        text-decoration-color: #c8f7dd;
+      }
+      .micic {
+        width: 14px;
+        height: 14px;
+        vertical-align: -2px;
+      }
+
+      header.brand {
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 30px 20px 0;
+      }
+      header.brand h1 {
+        font-size: 2rem;
+        line-height: 1.2;
+        margin: 0;
+      }
+      header.brand .byline {
+        color: #5c6670;
+        font: 0.85rem system-ui, sans-serif;
+        margin: 6px 0 0;
+      }
+
+      /* Tabs = the SPA's "pages": clicking one swaps the section with NO page
+         reload (history hash), so the floating call is never torn down. */
+      nav.tabs {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        gap: 4px;
+        max-width: 680px;
+        margin: 16px auto 0;
+        padding: 8px 16px;
+        background: #faf6efe6;
+        backdrop-filter: blur(6px);
+        border-bottom: 1px solid #e6ddcb;
+        font: 600 15px system-ui, sans-serif;
+        overflow-x: auto;
+      }
+      nav.tabs a {
+        flex: 0 0 auto;
+        text-decoration: none;
+        color: #5c6670;
+        padding: 7px 14px;
+        border-radius: 999px;
+      }
+      nav.tabs a:hover {
+        background: #efe7d6;
+      }
+      nav.tabs a.on {
+        background: #1a7f4e;
+        color: #fff;
+      }
+
+      main.trip {
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 8px 20px 90px;
+      }
+      main.trip h2 {
+        font-size: 1.5rem;
+      }
+      main.trip blockquote {
+        border-left: 3px solid #1a7f4e;
+        margin-left: 0;
+        padding-left: 16px;
+        color: #5c6670;
+        font-style: italic;
+      }
+      main.trip ul {
+        padding-left: 1.2em;
+      }
+      .hint-stay {
+        margin-top: 28px;
+        padding: 12px 16px;
+        background: #eef7f1;
+        border: 1px solid #cfe7d9;
+        border-radius: 12px;
+        font: 0.9rem/1.5 system-ui, sans-serif;
+        color: #2c5c45;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="note">
+      <p>
+        This is a <strong>live Kibitz call</strong> embedded in a <strong>single-page app</strong>. Switch tabs below —
+        the call in the corner <strong>never drops</strong>, and <strong>everyone on the call follows along</strong> to
+        the same tab.
+      </p>
+      <p>
+        Bring a friend to plan with:
+        <button id="invite" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          Copy invite link
+        </button>
+        — then you both open the
+        <svg class="micic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        mic button (bottom-right).
+      </p>
+      <a class="note-home" href="/">← kibitz.chat</a>
+    </div>
+
+    <header class="brand">
+      <h1>A Weekend in Lisbon</h1>
+      <p class="byline">Plan it together, even apart · 2 of you · 3 days</p>
+    </header>
+
+    <nav class="tabs">
+      <a href="#/plan" data-route="plan">Plan</a>
+      <a href="#/map" data-route="map">Map</a>
+      <a href="#/eats" data-route="eats">Eats</a>
+      <a href="#/pack" data-route="pack">Pack</a>
+    </nav>
+
+    <main class="trip">
+      <section data-route="plan">
+        <h2>The loose plan</h2>
+        <p>
+          Two friends, one weekend, and exactly zero agreement on whether this is a "see everything" trip or a "sit in a
+          square and do nothing" trip. Good news: it can be both, badly.
+        </p>
+        <blockquote>
+          The whole point of planning over a call is that you argue about the itinerary now, not at 8am in a strange
+          kitchen with no coffee.
+        </blockquote>
+        <ul>
+          <li><strong>Fri</strong> — land, drop bags, get lost in Alfama on purpose.</li>
+          <li><strong>Sat</strong> — Belém in the morning, river in the afternoon, fado you'll pretend to understand.</li>
+          <li><strong>Sun</strong> — one museum, one long lunch, one missed flight risk.</li>
+        </ul>
+        <p>Flip to <strong>Map</strong> — notice the call didn't blink.</p>
+      </section>
+
+      <section data-route="map" hidden>
+        <h2>Where to wander</h2>
+        <p>No real map here — that's not the point. The point is you just switched "pages" and the video stayed put.</p>
+        <ul>
+          <li><strong>Alfama</strong> — the oldest, steepest, most photogenic getting-lost.</li>
+          <li><strong>Baixa &amp; Chiado</strong> — grand squares, trams, and shops you can't afford.</li>
+          <li><strong>Belém</strong> — monastery, tower, and the only pastéis that matter.</li>
+          <li><strong>LX Factory</strong> — for when one of you needs "something a bit more design-y."</li>
+        </ul>
+      </section>
+
+      <section data-route="eats" hidden>
+        <h2>The non-negotiables</h2>
+        <p>This is the tab you'll actually fight about. Settle it now, on the call.</p>
+        <ul>
+          <li><strong>Pastéis de Belém</strong> — yes, the queue; yes, worth it.</li>
+          <li><strong>A tasca with no English menu</strong> — point bravely.</li>
+          <li><strong>Ginjinha in a chocolate cup</strong> — breakfast, arguably.</li>
+          <li><strong>Time Out Market</strong> — for when you can't agree, so you get nine things.</li>
+        </ul>
+      </section>
+
+      <section data-route="pack" hidden>
+        <h2>What to bring</h2>
+        <ul>
+          <li>Shoes that have made peace with cobblestones.</li>
+          <li>A light jacket — the river has opinions in the evening.</li>
+          <li>Cash, for the tasca and the ginjinha guy.</li>
+          <li>Zero expectation of a flat walk, anywhere, ever.</li>
+        </ul>
+        <div class="hint-stay">
+          Still talking? That's the whole pitch: you clicked through four "pages" and the call never reconnected, never
+          dropped a frame. And because the widget can carry a little shared state over its own data channel, whoever
+          changes tab takes everyone along — you're always on the same page, literally. No pinning, no plumbing.
+        </div>
+      </section>
+    </main>
+
+    <script>
+      // A crypto-random base-36 code (mirrors src/core/roomCode.ts). Reject bytes
+      // ≥ 252 (= 7×36) so every glyph is equally likely; 10 chars is ~52 bits.
+      function roomCode(n) {
+        let s = ''
+        while (s.length < n) {
+          for (const b of crypto.getRandomValues(new Uint8Array(n))) {
+            if (b < 252) s += (b % 36).toString(36)
+            if (s.length === n) break
+          }
+        }
+        return s
+      }
+
+      // The room is minted ONCE and carried in ?room= (preserved across the hash
+      // routing below). Because this is an SPA, the widget mounts once and the call
+      // simply persists as you switch tabs — there's nothing to re-join.
+      const params = new URLSearchParams(location.search)
+      let room = params.get('room')
+      if (!room) {
+        room = 'trip-' + roomCode(10)
+        params.set('room', room)
+        history.replaceState(null, '', '?' + params + location.hash)
+      }
+      window.__kibitzRoom = room
+
+      // The route currently shown, derived from the URL hash (#/eats → "eats").
+      function currentRoute() {
+        return location.hash.replace(/^#\/?/, '') || 'plan'
+      }
+
+      // Client-side router: show the section matching #/route, no page reload.
+      function route() {
+        const r = currentRoute()
+        let matched = false
+        document.querySelectorAll('main.trip > section').forEach((s) => {
+          const on = s.dataset.route === r
+          s.hidden = !on
+          matched = matched || on
+        })
+        if (!matched) document.querySelector('main.trip > section').hidden = false
+        document.querySelectorAll('nav.tabs a').forEach((a) => a.classList.toggle('on', a.dataset.route === r))
+        window.scrollTo(0, 0)
+      }
+      addEventListener('hashchange', route)
+      route()
+
+      // Copy the invite link (this page's URL, ?room= included).
+      const SVG = (inner) =>
+        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`
+      const LINK_SVG = SVG('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>')
+      const CHECK_SVG = SVG('<polyline points="20 6 9 17 4 12"/>')
+      const invite = document.getElementById('invite')
+      invite.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(location.href)
+        } catch {
+          /* clipboard blocked — the URL bar still holds the link */
+        }
+        invite.innerHTML = CHECK_SVG + ' Copied — now send it'
+        invite.classList.add('copied')
+        setTimeout(() => {
+          invite.innerHTML = LINK_SVG + ' Copy invite link'
+          invite.classList.remove('copied')
+        }, 2200)
+      })
+    </script>
+    <script src="/widget.js"></script>
+    <script>
+      // Mount the call, then add CO-BROWSE: when anyone on the call switches tabs,
+      // everyone follows. It rides the call's own data channel — the widget gives us
+      // broadcast()/onMessage() for exactly this kind of shared state.
+      const widget = Kibitz.mount({ room: window.__kibitzRoom })
+
+      // `applyingRemote` guards the loop: while we're navigating because someone ELSE
+      // moved, the resulting hashchange must NOT re-broadcast (or two tabs ping-pong).
+      let applyingRemote = false
+
+      addEventListener('hashchange', () => {
+        if (applyingRemote) return
+        widget.broadcast({ kind: 'route', route: currentRoute() })
+      })
+
+      widget.onMessage((data) => {
+        if (!data || data.kind !== 'route' || typeof data.route !== 'string') return
+        const target = '#/' + data.route
+        if (location.hash === target) return // already there — nothing to do (and no echo)
+        applyingRemote = true
+        location.hash = target // fires hashchange → route() swaps the section
+        // hashchange runs as a task; clear the guard just after it fires.
+        setTimeout(() => {
+          applyingRemote = false
+        }, 0)
+      })
+    </script>
+  </body>
+</html>

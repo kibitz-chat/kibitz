@@ -1,0 +1,230 @@
+import { parseGalaxyBlob, synthGalaxyAnswer, turnServersFor, type GalaxyConfig } from './galaxySignal'
+
+/**
+ * Live connection to the galaxy relay's hub — the rendezvous for an
+ * internet-free LAN call. The relay is deliberately DUMB (assigns each peer an
+ * id and routes `{to,payload}` frames, nothing else) because it ships inside an
+ * Android app / Pi binary that updates rarely; ALL call semantics (presence,
+ * roster, media signaling) live here in the web layer as GalaxyFrame payloads.
+ *
+ * The blob arrives once via `?galaxy=…` and persists in localStorage — open the
+ * relay's link once on real internet (or its WiFi), and Kibitz works on that LAN
+ * forever after. `?galaxy=off` clears it.
+ */
+
+const STORE_KEY = 'kbz.galaxy'
+
+let cachedBlob: string | null | undefined
+
+/** The configured relay, or null. URL ?galaxy=… wins and persists. */
+export function activeGalaxy(): GalaxyConfig | null {
+  if (cachedBlob !== undefined) return parseGalaxyBlob(cachedBlob)
+  cachedBlob = null
+  if (typeof window === 'undefined') return null
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get('galaxy')
+    if (fromUrl === 'off') {
+      localStorage.removeItem(STORE_KEY)
+      return null
+    }
+    const candidate = fromUrl ?? localStorage.getItem(STORE_KEY)
+    if (parseGalaxyBlob(candidate)) {
+      cachedBlob = candidate
+      if (fromUrl) localStorage.setItem(STORE_KEY, fromUrl)
+    }
+  } catch {
+    cachedBlob = null
+  }
+  return parseGalaxyBlob(cachedBlob)
+}
+
+/** Whether a relay is configured (drives the offline-call UI). */
+export function hasGalaxy(): boolean {
+  return activeGalaxy() !== null
+}
+
+/** The galaxy blob in THIS url's `?galaxy=` query, or null — the EXPLICIT signal that the current link is an
+ *  OFFLINE-room link (blob + a room id in the hash). Routing keys on this, NOT the localStorage cache, so a blob
+ *  cached from an earlier offline call can never hijack a normal online room link. */
+export function urlGalaxyBlob(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const b = new URLSearchParams(window.location.search).get('galaxy')
+    return b && b !== 'off' && parseGalaxyBlob(b) ? b : null
+  } catch {
+    return null
+  }
+}
+
+/** A shareable hub blob for HOSTING an offline call: reuse the hub already in this URL (the app IS its own hub —
+ *  the native build), else DISCOVER one on the LAN. Returns null if no hub answers. The caller turns it into a
+ *  ?galaxy=<blob>#<room> link. (Discovery is lazy-imported so it isn't a static cycle / entry-bundle weight.) */
+export async function offlineHubBlob(): Promise<string | null> {
+  const inUrl = urlGalaxyBlob()
+  if (inUrl) return inUrl
+  try {
+    const [{ discoverHub, configFor }, { buildGalaxyBlob }] = await Promise.all([
+      import('./hubDiscover'),
+      import('./galaxySignal'),
+    ])
+    const { ip } = await discoverHub()
+    return buildGalaxyBlob(configFor(ip))
+  } catch {
+    return null
+  }
+}
+
+/** ICE servers for the OFFLINE media mesh: the relay's LAN TURN (g2 relays only), so audio/video routes THROUGH
+ *  the hub (a real LAN IP both phones reach) instead of peer-to-peer, which iOS/mDNS breaks on a phone LAN.
+ *  Empty for a g1 relay or none → the mesh falls back to direct host candidates (the pre-TURN behavior). */
+export function galaxyTurnServers(): RTCIceServer[] {
+  return turnServersFor(activeGalaxy())
+}
+
+export interface GalaxyHub {
+  /** Our hub id — also our identity in the call (used as the media peer id). */
+  readonly id: number
+  /** Scope this connection to a ROOM on the relay (multi-room): only same-room peers are discovered
+   *  (peers()) and reachable (send/broadcast). Call ONCE right after connect, before any peers()/broadcast.
+   *  Omitting it leaves us in the default shared room "" (back-compat with single-room relays/clients). */
+  join(room: string): void
+  send(to: number, frame: unknown): void
+  /** Send a frame to every other current hub peer (presence, mesh fan-out). */
+  broadcast(frame: unknown): Promise<void>
+  onFrame(cb: (from: number, frame: unknown) => void): () => void
+  /** Current hub peer ids (including ourselves). */
+  peers(): Promise<number[]>
+  onClose(cb: () => void): void
+  close(): void
+}
+
+const OPEN_TIMEOUT_MS = 6000
+
+export async function connectGalaxy(cfg: GalaxyConfig, timeoutMs = OPEN_TIMEOUT_MS): Promise<GalaxyHub> {
+  const pc = new RTCPeerConnection({ iceServers: [] })
+  const dc = pc.createDataChannel('hub')
+  await pc.setLocalDescription(await pc.createOffer())
+  await pc.setRemoteDescription({ type: 'answer', sdp: synthGalaxyAnswer(pc.localDescription?.sdp ?? '', cfg) })
+
+  const cbs = new Set<(from: number, frame: unknown) => void>()
+  const closeCbs = new Set<() => void>()
+  let peersWaiter: ((ids: number[]) => void) | null = null
+  let closed = false
+
+  const myId = await new Promise<number>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pc.close()
+      reject(new Error('relay unreachable'))
+    }, timeoutMs)
+    dc.onmessage = (e) => {
+      try {
+        const m = JSON.parse(e.data as string) as
+          | { t: 'id'; id: number }
+          | { t: 'peers'; ids: number[] }
+          | { t: 'from'; id: number; payload: unknown }
+        if (m.t === 'id') {
+          clearTimeout(timer)
+          resolve(m.id)
+        } else if (m.t === 'peers') {
+          peersWaiter?.(m.ids)
+          peersWaiter = null
+        } else if (m.t === 'from') {
+          for (const cb of cbs) cb(m.id, m.payload)
+        }
+      } catch {
+        /* malformed hub frame — drop */
+      }
+    }
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        clearTimeout(timer)
+        if (!closed) {
+          closed = true
+          for (const cb of closeCbs) cb()
+        }
+        reject(new Error('relay connection failed'))
+      }
+    }
+  })
+  dc.onclose = () => {
+    if (!closed) {
+      closed = true
+      for (const cb of closeCbs) cb()
+    }
+  }
+
+  const peers = (): Promise<number[]> =>
+    new Promise((resolve) => {
+      peersWaiter = resolve
+      if (dc.readyState === 'open') dc.send(JSON.stringify({ t: 'peers' }))
+      setTimeout(() => {
+        if (peersWaiter === resolve) {
+          peersWaiter = null
+          resolve([])
+        }
+      }, 3000)
+    })
+
+  return {
+    id: myId,
+    join(room) {
+      // multi-room: tell the relay which room this connection belongs to (the relay scopes peers()/to to it).
+      if (dc.readyState === 'open') dc.send(JSON.stringify({ t: 'join', room }))
+    },
+    send(to, frame) {
+      if (dc.readyState === 'open') dc.send(JSON.stringify({ t: 'to', id: to, payload: frame }))
+    },
+    async broadcast(frame) {
+      const ids = await peers()
+      for (const id of ids) if (id !== myId && dc.readyState === 'open') {
+        dc.send(JSON.stringify({ t: 'to', id, payload: frame }))
+      }
+    },
+    onFrame(cb) {
+      cbs.add(cb)
+      return () => cbs.delete(cb)
+    },
+    peers,
+    onClose(cb) {
+      closeCbs.add(cb)
+    },
+    close() {
+      closed = true
+      try {
+        dc.close()
+      } catch {
+        /* ignore */
+      }
+      pc.close()
+    },
+  }
+}
+
+// ---- shared instance (one hub connection serves the whole app) --------------
+
+let current: Promise<GalaxyHub> | null = null
+
+export function ensureGalaxyHub(): Promise<GalaxyHub> {
+  const cfg = activeGalaxy()
+  // With a pairing blob (scanned a QR / opened a galaxy link) → connect to that relay. WITHOUT one (a guest who
+  // just opened the site on the Wi-Fi) → DISCOVER the hub: probe the LAN for the fixed-identity relay. Dynamic
+  // import so galaxyHub ↔ hubDiscover isn't a static cycle (hubDiscover imports connectGalaxy from here).
+  current ??= (cfg ? connectGalaxy(cfg) : import('./hubDiscover').then((m) => m.discoverHub().then((r) => r.hub)))
+    .then((hub) => {
+      hub.onClose(() => {
+        current = null
+      })
+      return hub
+    })
+    .catch((e: unknown) => {
+      current = null
+      throw e
+    })
+  return current
+}
+
+export function closeGalaxyHub(): void {
+  const c = current
+  current = null
+  void c?.then((hub) => hub.close()).catch(() => undefined)
+}

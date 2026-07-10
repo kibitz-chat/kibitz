@@ -1,0 +1,38 @@
+# Kibitz
+
+> Kibitz (https://kibitz.chat) adds account-free, peer-to-peer, end-to-end-encrypted video calls and screen-sharing to any website with one script tag. There are no accounts and no media server: a room is just an unguessable link, audio and video flow directly browser-to-browser over WebRTC (DTLS-SRTP), and Kibitz's servers only introduce browsers — they never see, store, or can decrypt a call. It is embeddable and fully scriptable (a headless "composable" mode exposes the whole call as an API), so you can build your own call UI or bring an AI agent into a live shared web session.
+
+Kibitz is built around side-by-side presence, not meetings: look at anything together anywhere on the web, with anyone — share a tab or your screen, chat, and optionally bring an AI "to the table." A room is created just by opening a link; the first person in becomes its coordinator (holding the presence/roster/lobby authority) — an open room has no admin, and a moderation "host" is a separate, optional role. The compiled web app is free to copy and self-host; the source for the redistributable build is open.
+
+This file is a map for language models. Each page below links to its clean Markdown (`.md`) version; most also render as HTML at the URL without the `.md`. The full text of every page inlined into one file is at https://kibitz.chat/llms-full.txt.
+
+## Product & UI
+- [Product & UI manual](https://kibitz.chat/manual.md): the most complete single page — what Kibitz is, the four modes (web room, embedded widget, headless engine, offline LAN), **every control** in the in-call widget, a one-line capability catalog of everything it does, the programmatic surface in brief, and what a language model can do if it joins a call. Read this first to understand the whole product.
+
+## Docs
+- [Embed & API reference](https://kibitz.chat/docs.md): the one-tag `<script>` snippet, the `Kibitz.mount()` options, `broadcast`/`onMessage` for shared app state over the call's data channel, headless/composable mode — the full `MountedWidget` controller: participants, call controls, events, screen-share, the knock-to-admit lobby, verified rooms + the join gate, and the participant-capability / agent-consent controls.
+
+## Engine deep-dives (architecture, security, agents)
+These render as HTML at `https://kibitz.chat/docs/<name>` and are inlined in `/llms-full.txt`.
+- [Architecture](https://kibitz.chat/docs/architecture): the room model, the three transport planes (presence star + peer-to-peer media & data mesh), the composable engine, identity/verification, and the participant-capability layer.
+- [Threat model](https://kibitz.chat/docs/threat-model): what's protected vs not, who can see what, admission attacks, and the agent surface (a read-only agent gets no media and its acts are dropped).
+- [Verification](https://kibitz.chat/docs/verification): who gets in — the join-gate methods (open, name list, join code, signed invites, email-mailed code, Google), the authority-level door, and the verified-roster mutual pre-share.
+- [Cert-binding](https://kibitz.chat/docs/cert-binding): how an OIDC token is cryptographically bound to the DTLS certificate so it can't be replayed over another connection.
+- [Agent protocol](https://kibitz.chat/docs/agent-protocol): how an AI agent perceives and acts over the data channel — the envelope vocabulary, the capability grant the engine enforces (read-only by default), and the SDK surface.
+- [Agent platform](https://kibitz.chat/docs/agent-platform): the one-protocol/three-runtimes view (browser, browserless Node, MCP server), the capability/consent/audit model, and how to run an agent.
+- [Offline mode](https://kibitz.chat/docs/offline-mode): same-Wi-Fi rooms with no internet via a tiny self-hosted LAN hub (distinct from the TURN relay, which is the internet media fallback).
+
+## How it works & trust
+- [Security & how calls work](https://kibitz.chat/security.md): the media path (direct, end-to-end encrypted with DTLS-SRTP — no SFU or media server decodes/mixes/records anything); what the signaling server vs the TURN relay can and cannot see; the one real threat (a compromised/compelled signaling server during call setup); and the emoji "safety code" you compare to rule out a man-in-the-middle (like Signal's safety numbers).
+- [Transparency](https://kibitz.chat/transparency.md): what's open source (the redistributable build, relay, and the Whist reference app) vs a build artifact vs operator-private config; the protocol in brief (media AND content are peer-to-peer — no participant relays content; the first participant coordinates only presence/roster/lobby); a threat model of who can see what (participants, the authority, signaling, TURN, the operator); and a public roadmap.
+
+## Policies
+- [Privacy Policy](https://kibitz.chat/privacy.md): no accounts, no analytics, no advertising, no tracking cookies, no call recording; exactly what signaling and the TURN relay briefly handle; Cloudflare hosting; a self-hosting note about fallback public infrastructure. Effective June 17, 2026.
+- [Terms of Use](https://kibitz.chat/terms.md): a free "as is" beta; "a link is a key"; acceptable use; recording-consent responsibility; governed by the law of Delaware, USA. Effective June 17, 2026.
+
+## More
+- [Offline mode](https://kibitz.chat/relay.md): everyone on the same Wi-Fi in one room with no internet at all — one device runs a tiny open-source LAN hub, everyone else scans a QR once.
+
+## Optional
+- [Open-source build](https://github.com/kibitz-chat/kibitz): the redistributable web app — host it anywhere (any static host, or IPFS) so a copy can outlive the site. The build is redistributable; the source for the free build is public, the operator pseudonymous.
+- Contact: privacy@kibitz.chat (privacy/general), security@kibitz.chat (vulnerability reports). Operated by "the Kibitz project."

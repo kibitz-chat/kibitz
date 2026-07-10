@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>min-call — reliability probe</title>
+    <!--
+      Minimal, from-scratch 2-device audio+video call. Deliberately NOT kibitz: no mesh, no recovery ladder, no
+      force-relay logic, no presence/E2EE. Just PeerJS media (peer.call) over the SAME infra the real app uses —
+      signaling on signal.kibitz.chat, TURN from kibitz.chat/api/turn — so it's an apples-to-apples reliability test.
+      Always in debug mode: the panel streams live getStats (selected candidate pair + transport, bytes in/out, RTP).
+      Open the SAME url with the same #room on both phones:  https://<host>/min-call.html#test1
+      Optional: #test1?relay=1 forces relay-only (iceTransportPolicy:'relay').  ?v=0 = audio only.
+    -->
+    <style>
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { margin: 0; height: 100%; background: #000; color: #eee; font-family: system-ui, sans-serif; }
+      #stage { position: fixed; inset: 0; display: flex; flex-direction: column; }
+      #remote { flex: 1; width: 100%; object-fit: cover; background: #000; }
+      #local { position: fixed; right: 8px; top: 8px; width: 96px; height: 128px; object-fit: cover; border-radius: 8px; border: 1px solid #333; background: #111; }
+      #status { position: fixed; left: 8px; top: 8px; font: 700 15px/1.2 ui-monospace, monospace; padding: 6px 10px; border-radius: 8px; background: rgba(0,0,0,.6); }
+      #dbg { position: fixed; left: 4px; right: 4px; bottom: 4px; max-height: 42vh; overflow: auto; font: 11px/1.35 ui-monospace, monospace; color: #1f1; background: rgba(0,0,0,.85); padding: 6px 8px; border-radius: 6px; white-space: pre-wrap; }
+      .ok { color: #2f6; } .bad { color: #f55; } .warn { color: #fd0; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"><video id="remote" autoplay playsinline></video></div>
+    <video id="local" autoplay playsinline muted></video>
+    <div id="status">starting…</div>
+    <div id="dbg">boot…</div>
+
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script>
+      const $ = (id) => document.getElementById(id)
+      const q = new URLSearchParams(location.hash.split('?')[1] || '')
+      const room = (location.hash.split('?')[0] || '').replace(/^#/, '') || 'test'
+      const RELAY = q.get('relay') === '1'
+      const WANT_VIDEO = q.get('v') !== '0'
+      const HOST_ID = 'mincall-' + room
+      const log = []
+      const setStatus = (t, cls) => { $('status').textContent = t; $('status').className = cls || '' }
+      const push = (m) => { log.unshift(m); if (log.length > 6) log.pop() }
+
+      let pc = null // the live RTCPeerConnection (from PeerJS call.peerConnection) — for getStats
+      let role = '…'
+      let everBytes = 0
+
+      // ── the always-on debug readout: what path media takes + whether it flows ──────────────────────────────
+      async function tick() {
+        let head = `min-call  room=${room}  role=${role}  relay=${RELAY ? 'ON' : 'off'}`
+        let body = ''
+        if (pc) {
+          head += `\nconn=${pc.connectionState}  ice=${pc.iceConnectionState}  sig=${pc.signalingState}`
+          try {
+            const st = await pc.getStats()
+            const byId = new Map()
+            st.forEach((r) => byId.set(r.id, r))
+            let selId = ''
+            st.forEach((r) => { if (r.type === 'transport' && r.selectedCandidatePairId) selId = r.selectedCandidatePairId })
+            let pair = selId ? byId.get(selId) : null
+            if (!pair) st.forEach((r) => { if (!pair && r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') pair = r })
+            let inB = 0, outB = 0, frames = 0
+            st.forEach((r) => {
+              if (r.type === 'inbound-rtp') { inB += r.bytesReceived || 0; frames += r.framesDecoded || 0 }
+              if (r.type === 'outbound-rtp') outB += r.bytesSent || 0
+            })
+            if (inB > everBytes) everBytes = inB
+            const ab = (t) => ({ host: 'host', srflx: 'srflx', prflx: 'prflx', relay: 'relay' }[t] || t || '?')
+            if (pair) {
+              const lc = byId.get(pair.localCandidateId), rc = byId.get(pair.remoteCandidateId)
+              const tp = (lc && (lc.relayProtocol || lc.protocol)) || '?'
+              body += `\npair=${ab(lc && lc.candidateType)}/${ab(rc && rc.candidateType)} ${tp}  pairRx=${pair.bytesReceived || 0} pairTx=${pair.bytesSent || 0}`
+            } else body += `\npair=— (no nominated pair yet)`
+            body += `\nRTP in=${(inB/1024).toFixed(1)}KB  out=${(outB/1024).toFixed(1)}KB  frames=${frames}`
+            // The verdict — the one line that matters.
+            if (inB > 0) setStatus('✅ MEDIA FLOWING', 'ok')
+            else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') setStatus('⚠ connected, NO media', 'warn')
+            else setStatus('… ' + pc.iceConnectionState, 'warn')
+          } catch (e) { body += `\ngetStats err: ${e.message}` }
+        }
+        $('dbg').textContent = head + body + '\n' + log.join('\n')
+      }
+      setInterval(tick, 1000)
+
+      // ── wire a call's pc + remote stream ───────────────────────────────────────────────────────────────────
+      function bindCall(call) {
+        pc = call.peerConnection
+        try {
+          pc.addEventListener('iceconnectionstatechange', () => push(`ice→${pc.iceConnectionState}`))
+          pc.addEventListener('icecandidate', (e) => { if (e.candidate) push(`cand ${e.candidate.type || e.candidate.candidate.split(' ')[7]} ${e.candidate.protocol}`) })
+        } catch {}
+        call.on('stream', (remote) => { push('remote stream ✓ tracks=' + remote.getTracks().map((t) => t.kind).join(',')); $('remote').srcObject = remote })
+        call.on('close', () => push('call closed'))
+        call.on('error', (e) => push('call err: ' + e))
+      }
+
+      // ── boot: TURN → media → PeerJS (claim host id; fall back to guest and call the host) ──────────────────
+      ;(async () => {
+        let iceServers = []
+        try {
+          const r = await fetch('https://kibitz.chat/api/turn', { credentials: 'omit' })
+          const d = await r.json()
+          iceServers = Array.isArray(d.iceServers) ? d.iceServers : []
+          push('TURN: ' + iceServers.length + ' servers' + (JSON.stringify(iceServers).includes('turn:') ? ' (+TURN)' : ''))
+        } catch (e) { push('TURN fetch failed: ' + e.message) }
+
+        let stream
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: WANT_VIDEO })
+          $('local').srcObject = stream
+          push('getUserMedia ✓ ' + stream.getTracks().map((t) => t.kind).join(','))
+        } catch (e) { push('getUserMedia FAILED: ' + e.message); setStatus('mic/cam blocked', 'bad'); return }
+
+        const peerConfig = { iceServers }
+        if (RELAY) peerConfig.iceTransportPolicy = 'relay'
+        const opts = { host: 'signal.kibitz.chat', port: 443, path: '/', secure: true, config: peerConfig }
+
+        // Try to be HOST (claim the room id). If taken → be GUEST and call the host.
+        const host = new Peer(HOST_ID, opts)
+        host.on('open', () => { role = 'HOST'; push('host id open — waiting for a call'); setStatus('waiting for peer…', 'warn') })
+        host.on('call', (call) => { push('incoming call — answering'); bindCall(call); call.answer(stream) })
+        host.on('error', (e) => {
+          if (e.type === 'unavailable-id') {
+            push('room taken → GUEST')
+            const guest = new Peer(opts) // random id
+            guest.on('open', () => { role = 'GUEST'; push('guest open — calling host'); setStatus('calling…', 'warn'); const call = guest.call(HOST_ID, stream); bindCall(call) })
+            guest.on('error', (er) => push('guest err: ' + (er && er.type)))
+          } else push('peer err: ' + (e && e.type))
+        })
+      })()
+    </script>
+  </body>
+</html>

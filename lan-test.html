@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- Headless harness for the offline LAN core (joinLanRoom + the hub). Served by
+     the vite DEV server so the TS imports transform on the fly. Not shipped. -->
+<html>
+  <head><meta charset="utf-8" /><title>kibitz lan test</title></head>
+  <body>
+    <script type="module">
+      import { joinLanRoom } from '/src/core/lanRoom.ts'
+
+      let lan = null
+      let roster = []
+      const sigs = []
+
+      window.lanJoin = (name) => {
+        lan = joinLanRoom()
+        lan.link.onRoster((m) => { roster = m })
+        lan.signal.onSignal((from, payload) => { sigs.push({ from, payload }) })
+        // join the call (mic-less in this harness — we only test roster + sig)
+        lan.link.setSelf(true, false, name, '', '')
+        return true
+      }
+      window.lanVoiceId = () => lan?.voiceId() ?? ''
+      window.lanStatus = () => lan?.status() ?? 'none'
+      window.lanRoster = () => roster.map((m) => ({ id: m.id, name: m.name, cam: m.cam }))
+      window.lanSend = (to, payload) => lan?.signal.send(to, payload)
+      window.lanSigs = () => sigs
+    </script>
+  </body>
+</html>

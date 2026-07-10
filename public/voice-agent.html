@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Kibitz voice agent harness</title>
+    <style>
+      body {
+        margin: 0;
+        font: 15px/1.5 system-ui, sans-serif;
+        color: #cbd5e1;
+        background: #0b1220;
+        display: grid;
+        place-items: center;
+        height: 100vh;
+      }
+      .card {
+        max-width: 30rem;
+        padding: 1.5rem 2rem;
+        text-align: center;
+      }
+      code {
+        background: #1e293b;
+        padding: 0.1em 0.4em;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>🤖 Kibitz voice agent</h1>
+      <p>
+        This blank page just loads the Kibitz widget so a headless agent process can mount it and join a
+        room. There's nothing to do here — drive it from
+        <code>node tools/voice-agent/agent.mjs &lt;room&gt;</code>.
+      </p>
+    </div>
+    <!-- Expose window.Kibitz on this origin. No data-room → it does NOT auto-mount; the agent
+         process mounts headlessly itself via Kibitz.mount(). -->
+    <script src="/widget.js"></script>
+  </body>
+</html>

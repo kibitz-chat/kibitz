@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transparency — what's open, what's private — Kibitz</title>
+    <meta name="description" content="What's open source in Kibitz vs a build artifact vs operator-private, the protocol in brief, a threat model of who can see what (participants, host/authority, signaling, TURN, operator), and a public roadmap." />
+    <meta name="theme-color" content="#faf6ef" />
+    <style>
+      :root { color-scheme: light }
+      body { margin: 0; background: #faf6ef; color: #2a342f;
+        font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif }
+      .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 64px }
+      a { color: #1f6f4f }
+      .brand { color: #0b3d2e; font-weight: 700; text-decoration: none; font-size: 1.3rem }
+      h1 { font-size: 1.7rem; color: #0b3d2e; margin: 18px 0 6px }
+      .lead { font-size: 1.05rem }
+      h2 { font-size: 1.12rem; color: #0b3d2e; margin: 26px 0 8px }
+      p, li { line-height: 1.6 }
+      ul { padding-left: 20px } li { margin: 6px 0 }
+      code { background: rgba(11,61,46,.07); padding: 1px 5px; border-radius: 5px; font-size: .92em }
+      .good { color: #1a7f4e; font-weight: 600 }
+      .warn { color: #b25a00; font-weight: 600 }
+      nav { margin-top: 40px; padding-top: 16px; border-top: 1px solid rgba(11,61,46,.15);
+        display: flex; gap: 18px; font-size: .9rem; flex-wrap: wrap }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="brand" href="/">Kibitz</a>
+      <h1>Transparency</h1>
+      <p class="lead">
+        Kibitz is a privacy tool, so being precise about what is open, what isn't, and exactly who can see what is
+        itself part of the product. Here's that, with a threat model and a public roadmap. For how a call connects
+        cryptographically, see the <a href="/security">Security page</a>.
+      </p>
+
+      <h2>What's open source</h2>
+      <p>The pieces you actually run are public, under the <code>kibitz-chat</code> GitHub organization:</p>
+      <ul>
+        <li><strong>The app build</strong> — the redistributable, self-contained build of kibitz.chat. Host it anywhere (any static host, or content-addressed on <a href="https://ipfs.tech/" target="_blank" rel="noopener noreferrer">IPFS</a>) so a copy can outlive this site: <a href="https://github.com/kibitz-chat/kibitz" target="_blank" rel="noopener noreferrer">kibitz-chat/kibitz</a>.</li>
+        <li><strong>The offline-mode LAN hub</strong> — the box you run for calls with no internet: <a href="https://github.com/kibitz-chat/kibitz-offline" target="_blank" rel="noopener noreferrer">kibitz-chat/kibitz-offline</a>.</li>
+        <li><strong>A reference app</strong> — Whist, a full multiplayer game built entirely on Kibitz's headless engine: <a href="https://github.com/kibitz-chat/whist" target="_blank" rel="noopener noreferrer">kibitz-chat/whist</a>.</li>
+      </ul>
+
+      <h2>Open source vs build artifact vs private</h2>
+      <ul>
+        <li><span class="good">Open &amp; redistributable:</span> the compiled <strong>build</strong> of the app and the LAN hub. Anyone can host them; running your own copy depends on nothing of ours.</li>
+        <li><span class="good">Documented, so you can reimplement:</span> the <strong>protocol</strong> (below) and the embed/SDK <a href="/docs">API</a>. You don't have to trust a binary — the wire format is described.</li>
+        <li><span class="warn">Not published:</span> the operator's <strong>deployment configuration</strong> — the specific domains, signaling-worker handle, and TURN credentials behind kibitz.chat. These are operational secrets, not part of what you run; the build points at its own <code>/api/*</code> and a copy can point at your own.</li>
+      </ul>
+
+      <h2>The protocol, in one screen</h2>
+      <ul>
+        <li>A <strong>room is a link.</strong> The name maps to a <em>deterministic</em> peer id; the first browser to claim it is the <strong>authority</strong>.</li>
+        <li><strong>Content (peer-to-peer):</strong> chat, payment links, annotations, and opaque app messages (co-browse, game state) travel <span class="good">directly between browsers</span> over DTLS-encrypted data connections — one per pair, alongside the media. <strong>No participant relays anyone else's content;</strong> a directed <code>sendTo</code> reaches only its recipient. The emoji safety code verifies the media connection specifically; per-data-channel verification is a planned follow-up.</li>
+        <li><strong>Presence (coordinated by the first participant):</strong> the roster, knock-to-admit lobby, lock, and reset are coordinated by whoever claimed the room — membership signalling, not message content. Content gating follows the roster: an un-admitted peer never appears in it, so no one's data mesh connects to it.</li>
+        <li><strong>Media (mesh, end-to-end encrypted):</strong> audio/video flow <span class="good">directly between browsers</span> (DTLS-SRTP); no server decodes, mixes, or records them. This is the part you verify yourself with the <strong>safety code</strong>.</li>
+        <li><strong>Signaling</strong> only introduces browsers and carries key fingerprints; a <strong>TURN relay</strong> (only when a direct link is impossible) forwards ciphertext it can't read.</li>
+      </ul>
+
+      <h2>Threat model — who can see what</h2>
+      <ul>
+        <li><strong>Other participants:</strong> the media (it's their call too) and the whole data channel. Vet who has the link; use the knock-to-admit <strong>lobby</strong> or <strong>lock</strong> the room to control entry.</li>
+        <li><strong>The room authority (the first participant's browser):</strong> coordinates presence (roster, lobby, lock) — so it knows <em>who</em> is in the room, but it does <strong>not</strong> relay or see chat / links / co-browse, which go peer-to-peer. For media and content it's just a normal peer.</li>
+        <li><strong>The signaling broker:</strong> connection metadata only (a temporary peer id, the room name, IP-bearing ICE candidates) — never content, and it stores none. Because key fingerprints pass here, a <em>compromised</em> broker is the one party that could attempt to MITM a <strong>future</strong> call — exactly what the safety code catches. It can't touch a call in progress.</li>
+        <li><strong>The TURN relay:</strong> ciphertext, IP addresses, and traffic volume only. It cannot decrypt the media. Most calls never use it.</li>
+        <li><strong>The operator (us):</strong> can be made to take the site down, but <strong>not</strong> to silently reach into calls — per-call keys are ephemeral and held only by the two browsers.</li>
+        <li><strong>Nothing is stored:</strong> rooms vanish when everyone leaves; chat lives only in the open panels. There is no database to subpoena.</li>
+      </ul>
+
+      <h2>Reproduce / run your own</h2>
+      <p>
+        The build is redistributable and the protocol is documented, so you needn't depend on kibitz.chat — host the
+        build, or point a copy at your own signaling worker and TURN. Developers can even test against the real engine
+        offline: <code>joinRoom(room, { transport: createLocalBus() })</code> runs the full room transport in memory (see the
+        <a href="/docs">docs</a>).
+      </p>
+
+      <h2>Public roadmap</h2>
+      <p>
+        <strong>Shipped:</strong> embeddable widget + headless engine, E2EE media, <strong>peer-to-peer data channel</strong>
+        (chat / co-browse / <code>sendTo</code> go directly between browsers — no participant relays content), the safety
+        code (per-peer SAS), knock-to-admit lobby, screen-share stage, shared annotation, transport-only payment links,
+        room moderation (remove + block-rejoin, lock, reset), role labels, per-person mute/volume, keyboard shortcuts +
+        push-to-talk, connection diagnostics (direct/relay + RTT/loss), and an in-memory presence test transport.
+      </p>
+      <p>
+        <strong>Planned / under consideration:</strong> per-data-channel safety-code verification; first-class agent
+        identity &amp; capability permissions; expiring and one-time invite links; local captions/transcripts; broader
+        browser coverage (Firefox sidebar, Safari fallback) + a compatibility matrix; an npm package with generated API
+        docs; and app templates beyond Whist. Priorities shift with feedback — tell us what you need.
+      </p>
+
+      <h2>Reporting a security issue</h2>
+      <p>
+        Please report vulnerabilities privately to
+        <a href="mailto:security@kibitz.chat">security@kibitz.chat</a> rather than disclosing publicly, and give a
+        reasonable chance to fix.
+      </p>
+
+      <nav>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/security">Security</a>
+        <a href="/transparency">Transparency</a>
+        <a href="/docs">Engine</a>
+        <a href="/relay">Offline mode</a>
+        <a href="/">← Back to Kibitz</a>
+      </nav>
+    </div>
+  </body>
+</html>

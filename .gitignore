@@ -1,0 +1,24 @@
+node_modules
+dist
+*.tsbuildinfo
+dist-widget
+extension/content.js
+kibitz-extension.zip
+
+# e2e dev harness
+node_modules/
+
+# prerender SSR bundle (build artifact)
+dist-ssr
+
+# store-kit build artifact
+extension/store/*.zip
+.dev.vars
+.wrangler/
+
+# local env overrides (Vite) — per-developer, never committed
+.env.local
+.env.*.local
+
+# debug-build output (npm run debug) — local-only, never shipped
+.debug

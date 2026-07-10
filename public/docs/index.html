@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Kibitz Engine — embed, headless &amp; AI agents</title>
+    <meta
+      name="description"
+      content="One small open peer-to-peer engine, three ways to use it: drop a floating end-to-end-encrypted call onto any site with one script tag; drive it headless to build your own UI on its rooms, media and data; or let an AI agent join a room as a participant over the same channel people use. Kibitz.mount() options, broadcast/onMessage co-browse, the MountedWidget controller, and how agents fit in."
+    />
+    <meta name="theme-color" content="#faf6ef" />
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        background: #faf6ef;
+        color: #2a342f;
+        font: 16px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      }
+      .wrap {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 24px 20px 64px;
+      }
+      a {
+        color: #1f6f4f;
+      }
+      .brand {
+        color: #0b3d2e;
+        font-weight: 700;
+        text-decoration: none;
+        font-size: 1.3rem;
+      }
+      h1 {
+        font-size: 1.7rem;
+        color: #0b3d2e;
+        margin: 18px 0 6px;
+      }
+      .lead {
+        font-size: 1.05rem;
+      }
+      h2 {
+        font-size: 1.12rem;
+        color: #0b3d2e;
+        margin: 30px 0 8px;
+      }
+      h3 {
+        font-size: 1rem;
+        color: #0b3d2e;
+        margin: 20px 0 6px;
+      }
+      p,
+      li {
+        line-height: 1.6;
+      }
+      ul {
+        padding-left: 20px;
+      }
+      li {
+        margin: 6px 0;
+      }
+      code {
+        font: 0.85em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        background: #ece4d4;
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+      pre {
+        background: #0b241c;
+        color: #e7f3ec;
+        border-radius: 10px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        font: 0.84rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      pre code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+      }
+      .tok {
+        color: #8fd3b0;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 10px 0;
+        font-size: 0.93rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 7px 10px;
+        border-bottom: 1px solid rgba(11, 61, 46, 0.14);
+        vertical-align: top;
+      }
+      th {
+        color: #0b3d2e;
+      }
+      td code {
+        white-space: nowrap;
+      }
+      .note {
+        background: #eef7f1;
+        border: 1px solid #cfe7d9;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin: 18px 0;
+        font-size: 0.95rem;
+        color: #244f3c;
+      }
+      nav {
+        margin-top: 44px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(11, 61, 46, 0.15);
+        display: flex;
+        gap: 18px;
+        font-size: 0.9rem;
+        flex-wrap: wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="brand" href="/">Kibitz</a>
+      <h1>The Kibitz Engine</h1>
+      <p class="lead">
+        One small, open, peer-to-peer engine — three ways to use it. Drop it on any page as a floating,
+        end-to-end-encrypted call with <strong>one script tag</strong>; drive it <strong>headless</strong> to build
+        your own UI on top of its rooms, media and data; or let an <strong>AI agent</strong> join a room as a
+        participant, over the same encrypted channel people use. No accounts, no SDK, no build step.
+      </p>
+      <p>
+        <strong>Open source under Apache-2.0.</strong> No black box — read, audit, build, fork, and self-host every
+        line of the engine: <a href="https://github.com/kibitz-chat/kibitz">github.com/kibitz-chat/kibitz</a>.
+      </p>
+      <p>
+        It's the same <code>widget.js</code> that powers kibitz.chat and
+        <a href="https://whist.kibitz.chat">whist.kibitz.chat</a> — a full multiplayer card game built entirely on
+        the headless engine, <a href="https://github.com/kibitz-chat/whist">open source as a reference design</a>. The
+        widget renders inside a shadow root, so it can't clash with your styles — and your styles can't break it.
+      </p>
+
+      <h2>How AI fits in</h2>
+      <p>
+        A room is just a link, and <strong>an agent joins it the same way a person does</strong> — over the same
+        peer-to-peer, end-to-end-encrypted channel, seeing what the room sees and acting right beside everyone. Because
+        the engine is headless-first, an agent is simply a participant your code drives: it reads the room's shared
+        state and browser view and acts back through the same data channel. It's an <strong>open platform</strong> —
+        open protocol, open source — so any agent can be invited into any room. The live proof is our
+        <a href="https://github.com/kibitz-chat/whist/tree/main/tools/kibitzer">kibitzer</a>: it pulls up a chair at a
+        <a href="https://whist.kibitz.chat">game of Whist</a>, reads a hand, and calls the plays as they happen — over
+        the very channel the humans use. The controller an agent drives is <a href="#headless">headless mode</a>, below.
+      </p>
+
+      <h2>1 · The one-liner</h2>
+      <p>Add this anywhere in your page. Everyone who opens it with the same <code>data-room</code> lands in the same call:</p>
+      <pre><code>&lt;script src="https://kibitz.chat/widget.js" data-room="<span class="tok">room-3f9k2mq7p1</span>"&gt;&lt;/script&gt;</code></pre>
+      <p>
+        A small mic launcher appears in the corner; tapping it opens the call panel. That's the whole integration.
+      </p>
+      <div class="note">
+        <strong>The room string <em>is</em> the invite — make it unguessable.</strong> Anyone who knows the room can
+        join, so use a random id like <code>room-3f9k2mq7p1</code> above — not a guessable word. Generate one however
+        you like, e.g. <code>'room-' + crypto.randomUUID().slice(0, 8)</code>, then share the page URL only with the
+        people you want in. A readable name like <code>my-room</code> is fine <em>only</em> when you actually want
+        anyone who can guess it to be able to join.
+      </div>
+
+      <h2>2 · Mount it yourself</h2>
+      <p>Leave off <code>data-room</code> and call <code>Kibitz.mount()</code> when you're ready — handy for SPAs, or to set the room dynamically:</p>
+      <pre><code>&lt;script src="https://kibitz.chat/widget.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  const call = Kibitz.mount({ room: <span class="tok">'room-3f9k2mq7p1'</span>, name: <span class="tok">'Dana'</span> })
+  // later, e.g. when leaving the page / view:
+  // call.unmount()
+&lt;/script&gt;</code></pre>
+
+      <h3>Options — <code>Kibitz.mount(options)</code></h3>
+      <table>
+        <tr><th>Option</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+        <tr><td><code>room</code></td><td>string</td><td>—&nbsp;(required)</td><td>The call everyone joins. Same string → same call.</td></tr>
+        <tr><td><code>name</code></td><td>string</td><td><code>''</code></td><td>Pre-fills the visitor's display name (they can still edit it).</td></tr>
+        <tr><td><code>startOpen</code></td><td>boolean</td><td><code>false</code></td><td>Open the panel immediately instead of the corner launcher.</td></tr>
+        <tr><td><code>preview</code></td><td>boolean</td><td><code>false</code></td><td>Show the real panel as a local self-view only — never dials a room. For demos.</td></tr>
+      </table>
+      <p>The auto-mount script tag accepts <code>data-room</code> and <code>data-name</code>, matching the first two options.</p>
+
+      <h3>Returned object — <code>MountedWidget</code></h3>
+      <table>
+        <tr><th>Member</th><th>What it does</th></tr>
+        <tr><td><code>unmount()</code></td><td>Remove the widget and tear down the call.</td></tr>
+        <tr><td><code>broadcast(data)</code></td><td>Send any structured-clone-able value to <em>everyone else</em> on the call (see co-browse below). No-op until the call's data link is up; you never receive your own message back.</td></tr>
+        <tr><td><code>sendTo(id, data)</code></td><td>Send a value to <em>one</em> participant by id (e.g. a game's per-player hidden state). Delivered <strong>directly peer-to-peer</strong> over a DTLS-encrypted data connection — no other participant (not even the room host) relays or sees it.</td></tr>
+        <tr><td><code>onMessage(cb)</code></td><td>Receive values from other people on the call: <code>onMessage((data, from) =&gt; …)</code> also gives the sender's id. Additive — each call adds a listener and returns an unsubscribe function.</td></tr>
+      </table>
+
+      <h2>3 · Shared state (co-browse / follow-me)</h2>
+      <p>
+        <code>broadcast</code> / <code>onMessage</code> ride the call's existing data channel, so you can sync a little
+        app state across everyone on the call with no server. The classic use is <strong>follow-me</strong>: when one
+        person changes page/tab, everyone follows.
+      </p>
+      <pre><code><span class="tok">const</span> call = Kibitz.mount({ room })
+<span class="tok">let</span> applyingRemote = false <span class="tok">// guard so a move we're applying doesn't echo back</span>
+
+<span class="tok">// tell everyone where I just went</span>
+addEventListener('hashchange', () =&gt; {
+  <span class="tok">if</span> (!applyingRemote) call.broadcast({ kind: 'route', route: location.hash })
+})
+
+<span class="tok">// follow someone else's move</span>
+call.onMessage((data) =&gt; {
+  <span class="tok">if</span> (data?.kind !== 'route' || location.hash === data.route) <span class="tok">return</span>
+  applyingRemote = true
+  location.hash = data.route <span class="tok">// fires hashchange → your router updates the page</span>
+  setTimeout(() =&gt; (applyingRemote = false), 0)
+})</code></pre>
+      <p>
+        The <code>applyingRemote</code> guard (plus the "already there" check) stops two tabs from ping-ponging. Kibitz
+        never inspects <code>data</code> — it's your channel.
+      </p>
+
+      <h2>4 · Single-page vs multi-page sites</h2>
+      <ul>
+        <li>
+          <strong>Single-page app (client-side routing):</strong> mount once and the call <em>persists</em> across
+          navigation — the widget lives on <code>document.body</code>, untouched by route changes. Ideal.
+        </li>
+        <li>
+          <strong>Multi-page site (full reloads):</strong> each page mounts its own widget, so the call drops and
+          reconnects on every navigation. Use the same <code>room</code> on each page and people rejoin automatically.
+        </li>
+      </ul>
+
+      <h2>5 · Good to know</h2>
+      <ul>
+        <li><strong>Peer-to-peer &amp; private.</strong> Audio/video go straight between browsers, end-to-end encrypted; no media server can see them.</li>
+        <li><strong>Free.</strong> Direct calls cost nothing. A relay is used only when two networks can't connect directly.</li>
+        <li><strong>Isolated.</strong> The widget is shadow-rooted — your page's CSS and the widget's never touch.</li>
+        <li><strong>Everyone joins muted, camera off</strong> — both are opt-in per person.</li>
+        <li><strong>Works on phones</strong>, including installed-PWA and iOS Safari.</li>
+      </ul>
+
+      <h2 id="headless">6 · Headless / composable mode <small>(advanced)</small></h2>
+      <p>
+        Pass <code>headless: true</code> and Kibitz mounts <strong>no UI of its own</strong> — it just runs the call
+        (media, presence, data) and hands you a controller. You render your own tiles, controls and chat from the
+        members and events below. This is how <a href="https://whist.kibitz.chat">whist.kibitz.chat</a> puts the table
+        video, presence and shared game state onto its own board — and it's exactly how an <strong>AI agent</strong>
+        joins a room as a participant: same controller, perceiving the roster + shared state and acting through
+        <code>broadcast</code>/<code>sendTo</code>. It's the same <code>widget.js</code> — just driven instead of displayed.
+      </p>
+
+      <h3>Extra options — <code>Kibitz.mount(options)</code></h3>
+      <table>
+        <tr><th>Option</th><th>Type</th><th>Default</th><th>What it does</th></tr>
+        <tr><td><code>headless</code></td><td>boolean</td><td><code>false</code></td><td>Render no built-in panel; you draw the UI from the controller + events.</td></tr>
+        <tr><td><code>identity</code></td><td>string</td><td>random</td><td>Stable per-user / per-seat id, so a reconnect is recognized as the same participant.</td></tr>
+        <tr><td><code>meta</code></td><td>object</td><td><code>{}</code></td><td>Opaque per-participant metadata (seat, userId…) attached to you and carried in the roster. Update later with <code>setMeta()</code>.</td></tr>
+        <tr><td><code>signalHost</code></td><td>string</td><td>auto</td><td>Point signaling at a specific worker (e.g. a self-hosted <code>signal.example.com</code>). Most embedders omit it.</td></tr>
+        <tr><td><code>turnHost</code></td><td>string</td><td>same-origin</td><td>Route TURN — and its bill — through an independent provider's <code>/api/turn</code> on another origin (see §7). Omit for kibitz.chat's own relay.</td></tr>
+        <tr><td><code>licenseKey</code></td><td>string</td><td>—</td><td>A premium bearer token sent to <code>/api/turn</code> so a gated endpoint grants TURN (see §7). The caller stays anonymous. Omit for the free tier.</td></tr>
+        <tr><td><code>grant</code></td><td>string</td><td>—</td><td>A signed room-grant token (the "opener pays" capability, see §7) sent to <code>/api/turn</code> as <code>X-Kibitz-Grant</code>, so the room opener's license sponsors this peer's TURN. Usually carried in the invite link as <code>?grant=</code>, but can be set in code.</td></tr>
+        <tr><td><code>joinGate</code> · <code>joinCredential</code></td><td>object · string</td><td>—</td><td>A who-can-join gate decoded from the room link (set at room creation): <code>{ mode: 'open'|'names'|'code'|'email'|'google'|'invite', … }</code> plus this peer's own signed invite token for <code>invite</code> mode. See <a href="/docs/verification">verification</a>.</td></tr>
+        <tr><td><code>apiBase</code></td><td>string</td><td>same-origin</td><td>Base URL of the email-code backend (issuer + <code>/api/email/jwks</code>) for the <code>email</code> verify method — an embedder on a different origin points this at <code>https://kibitz.chat</code> (where the backend lives).</td></tr>
+      </table>
+
+      <h3>Controller — the rest of <code>MountedWidget</code></h3>
+      <table>
+        <tr><th>Member</th><th>What it does</th></tr>
+        <tr><td><code>getState()</code></td><td>Snapshot — <code>{ inCall, micOn, camOn, sharing, self, isHost, lobbyOn, locked, lobbyStatus }</code>, plus the verified-identity/roster fields when <code>verifyIdentity</code> is set: <code>identityEnabled, selfEmail, rosterActive, rosterCanShare, rosterCompromised</code>.</td></tr>
+        <tr><td><code>getParticipants()</code></td><td>Everyone on the call, each with <code>id, name, isSelf, camOn, speaking, stream, meta, role</code> (<code>role</code> is <code>'host'</code> or <code>'guest'</code>). Attach <code>stream</code> to a muted <code>&lt;video&gt;</code> to draw a tile.</td></tr>
+        <tr><td><code>join({ mic?, cam? })</code></td><td>Join the call (promise). Mount with <code>startOpen: true</code> when driving headlessly so the data link comes up.</td></tr>
+        <tr><td><code>leave()</code></td><td>Leave the call but stay mounted.</td></tr>
+        <tr><td><code>toggleMic()</code> · <code>toggleCam()</code></td><td>Turn your mic / camera on or off (camera returns a promise).</td></tr>
+        <tr><td><code>shareScreen()</code> · <code>shareTrack(track)</code> · <code>stopShare()</code></td><td>Share via the browser picker, or publish an arbitrary <code>MediaStreamTrack</code> (e.g. a tab capture), then stop.</td></tr>
+        <tr><td><code>setName(n)</code> · <code>setAvatar(a)</code> · <code>setMeta(m)</code></td><td>Update your roster fields; changes propagate to everyone.</td></tr>
+        <tr><td><code>getKnocks()</code> · <code>setLobby(on)</code> · <code>admit(id)</code> · <code>deny(id)</code> · <code>remove(id)</code> · <code>setLocked(on)</code> · <code>resetRoom()</code></td><td>Lobby + moderation, host side: gate the room (<code>setLobby</code>), approve/refuse each person waiting (<code>getKnocks()</code> → <code>{ id, name, avatar }[]</code>), <code>remove(id)</code> a member (told to leave + blocked from rejoining), <code>setLocked(on)</code> to seal the room to new members, and <code>resetRoom()</code> to clear everyone's chat. No-op unless you're the room authority.</td></tr>
+        <tr><td><code>knock(name, avatar)</code></td><td>Knock-to-admit, joiner side: introduce yourself to a gated room before joining — what the host sees in the queue. Re-callable to rename while you wait.</td></tr>
+        <tr><td><code>signInIdentity(el, 'google'|'email')</code> · <code>identityNonce()</code> · <code>provideIdentityToken(jwt)</code></td><td>Verified identity (inert unless <code>verifyIdentity</code> is set): render the provider's sign-in into your element, or adopt a cert-bound token minted out-of-page (e.g. a sign-in popup on another origin). See §2a.</td></tr>
+        <tr><td><code>getCapabilityGrant(id)</code> · <code>setCapabilityGrant(id, grant)</code> · <code>getAgentAudit(id)</code></td><td>Participant capabilities, host side: read a peer's effective <code>Grant</code> (what it may perceive/act), widen or revoke it (<code>null</code> clears), and read the local audit feed (blocked acts + changes). Humans default full; agents default read-only. See §6b.</td></tr>
+        <tr><td><code>on(event, cb)</code></td><td>Subscribe; returns an unsubscribe fn. Events: <code>participants</code>, <code>join</code>, <code>leave</code>, <code>speaking</code>, <code>state</code> (the <code>getState()</code> fields above), <code>knocks</code> (host queue changed), <code>lobby</code> (your own <code>waiting</code>/<code>denied</code>/<code>locked</code>/admitted status).</td></tr>
+      </table>
+
+      <h3 id="caps">6b · Participant capabilities <small>(humans &amp; agents)</small></h3>
+      <p>
+        Every participant carries a <strong><code>Grant</code></strong> of what it may <strong>perceive</strong>
+        (<code>see-screen</code>, <code>hear-audio</code>, <code>read-chat</code>, <code>read-roster</code>,
+        <code>receive-directed</code>) and <strong>act</strong> (<code>send-chat</code>, <code>speak</code>,
+        <code>act</code>). <strong>Humans default to full; agents</strong> (<code>meta.role==='agent'</code>)
+        <strong>default to read-only</strong> — they perceive chat/roster/directed data, but receive <strong>no
+        media</strong> and can <strong>act nothing</strong>. The <strong>engine enforces</strong> it per-peer:
+        perceive = the sender withholds (data is never delivered to a peer that can't see it, and a withheld
+        screen-share/audio lane is swapped for a placeholder on that peer's connection); act = every honest peer
+        drops content from a peer lacking <code>send-chat</code>. The host widens/revokes any grant live
+        (<code>setCapabilityGrant</code>) via a per-agent consent panel + a local audit feed, and the room
+        authority distributes the grant map so it holds uniformly. An agent can disclose its model
+        <code>backend</code>/<code>egress</code> ("what it sees leaves the room"). Full model: the
+        <a href="/docs/agent-platform">agent platform</a> deep-dive.
+      </p>
+
+      <pre><code><span class="tok">const</span> call = Kibitz.mount({ room, headless: <span class="tok">true</span>, identity: <span class="tok">'seat-3'</span>, name: <span class="tok">'Dana'</span> })
+<span class="tok">await</span> call.join({ mic: <span class="tok">false</span>, cam: <span class="tok">false</span> })
+
+<span class="tok">// draw your own tiles whenever the roster changes</span>
+call.on('participants', (people) =&gt; {
+  <span class="tok">for</span> (<span class="tok">const</span> p <span class="tok">of</span> people) {
+    <span class="tok">// p.stream → a &lt;video&gt;; p.name / p.speaking / p.meta → your UI</span>
+  }
+})
+
+call.toggleMic() <span class="tok">// wire to your own button</span></code></pre>
+      <p class="note">
+        Headless mode ships in the live <code>widget.js</code> today (it's what runs whist.kibitz.chat). The TypeScript
+        types for <code>MountOptions</code> / <code>MountedWidget</code> live in the
+        <a href="https://github.com/kibitz-chat/kibitz">open-source repo</a>.
+      </p>
+
+      <h2 id="turn">7 · TURN, relays &amp; who pays <small>(advanced / self-host)</small></h2>
+      <p>
+        Calls are peer-to-peer, so most cost nothing. A <strong>TURN relay</strong> kicks in only when two
+        networks can't connect directly — roughly 1 call in 6 (strict/symmetric NAT, locked-down corporate
+        Wi-Fi). On kibitz.chat that relay is on us, so embedders pay nothing. But the relay endpoint is a
+        plain, open contract, so <em>who provides and pays for TURN</em> is fully swappable.
+      </p>
+
+      <h3>The endpoint — <code>GET /api/turn</code></h3>
+      <p>
+        The client fetches short-lived ICE/TURN servers from this endpoint; the long-term TURN key never
+        reaches the browser. It's a standard HTTP contract anyone can implement:
+      </p>
+      <pre><code><span class="tok">GET</span> /api/turn
+<span class="tok">Authorization:</span> Bearer &lt;licenseKey&gt;   <span class="tok">// optional — only for gated/premium TURN</span>
+
+<span class="tok">→</span> { "iceServers": [ … ] | null, "configured": <span class="tok">true</span>, "tier": "open" }</code></pre>
+      <ul>
+        <li>No TURN configured → <code>{ iceServers: null, configured: false }</code>, and the client falls back to public STUN — free, direct P2P.</li>
+        <li>The response sends CORS <code>*</code>, so a client on one origin may use a TURN provider on another.</li>
+        <li>Credentials are <strong>ephemeral</strong> (valid hours), minted per request — never the long-term key.</li>
+      </ul>
+
+      <h3>Point TURN somewhere else — <code>turnHost</code></h3>
+      <p>Set <code>turnHost</code> to route TURN, and its bill, through an independent provider — the twin of <code>signalHost</code>. Omit it for kibitz.chat's relay.</p>
+      <pre><code>Kibitz.mount({ room, turnHost: <span class="tok">'turn.example.com'</span> }) <span class="tok">// your /api/turn, your bill</span></code></pre>
+
+      <h3>"Opener pays" — a signed room grant</h3>
+      <p>
+        A licensed opener can sponsor everyone in their room. Their browser mints a short-lived, room-scoped,
+        <em>signed</em> grant (<code>POST /api/room-grant</code>, authed by their license) and bakes it into the
+        invite link as <code>?grant=…</code>. Joiners adopt it before connecting and present it to <code>/api/turn</code>
+        as <code>X-Kibitz-Grant</code>; it's verified and metered to the sponsor — over kibitz.chat's <em>own</em>
+        relay, so there's no open relay and the opener's key never leaves their browser. It rides the <em>link</em>
+        (not the in-call roster) because a peer that needs a relay to connect at all must have it <em>before</em>
+        connecting — the same idea as the offline <code>?galaxy=</code> link.
+      </p>
+      <pre><code>https://kibitz.chat/?grant=<span class="tok">&lt;signed-grant&gt;</span>#ember-a3f9k2mq7p</code></pre>
+      <p class="note">
+        There is deliberately <strong>no <code>?turn=host</code> link</strong>: letting a link silently point a
+        joiner's relay at an arbitrary host would let a third party harvest their IP + connection metadata without
+        consent. Pointing TURN at an independent provider is a <em>code-set</em> <code>turnHost</code> mount option
+        only (an embedder who owns both sides) — never something a shared link can do.
+      </p>
+
+      <h3>Who pays — pick a model</h3>
+      <table>
+        <tr><th>Model</th><th>How</th><th>Who's billed</th></tr>
+        <tr><td>kibitz.chat default</td><td>nothing to do</td><td>us — free for you</td></tr>
+        <tr><td>Your own premium</td><td>a license key in your browser</td><td>you — works in <em>any</em> room you join</td></tr>
+        <tr><td>You / your embed</td><td>self-host, or set <code>turnHost</code></td><td>you — one TURN account for all your calls</td></tr>
+        <tr><td>Opener pays</td><td>a signed room grant (<code>?grant=</code>) in the link</td><td>whoever opens the room — their license sponsors it</td></tr>
+        <tr><td>Bring-your-own-TURN</td><td>each user sets their own <code>turnHost</code></td><td>each user, for their own usage</td></tr>
+      </table>
+
+      <h3>Premium travels with you</h3>
+      <p>
+        A license key is <strong>per-person</strong>, held in your own browser — so premium relay follows you into
+        <em>every</em> call you join, billed to your own subscription, no matter who hosts. The classic case: a guest
+        on a locked-down <strong>corporate network</strong> (the person who actually needs TURN) joins a free host's
+        room and still connects — Cloudflare TURN's <code>turns:…:443</code> punches through the firewall, and in a
+        1:1 only <em>one</em> side needs a relay candidate to carry the call. This is the inverse of "opener pays":
+        there the host sponsors guests; here you bring your own, and it just works wherever you go.
+      </p>
+      <p class="note">
+        Group calls (3+): your relay rescues connections involving <em>you</em>; any other pair of strict-NAT peers
+        still needs one side with TURN or a direct path. Premium coverage is per-participant-pair, not whole-room.
+      </p>
+
+      <h3>Charging for TURN, without accounts</h3>
+      <p>
+        The optional <code>Authorization: Bearer</code> is how a provider can <em>charge</em> for relay while
+        keeping calls account-free. You sell an opaque <strong>license key</strong> — a bearer token, not an
+        identity; the client sends it, and your <code>/api/turn</code> mints TURN only for an active key
+        (everyone else gets free STUN). The <em>caller</em> stays anonymous; only the <em>buyer</em> is known
+        to the payment processor. The contract is open, so the gate, key store and checkout are yours to run
+        (the typical shape: checkout → webhook → entitlement store → token check).
+      </p>
+      <div class="note">
+        <strong>This is plumbing, not a price list.</strong> kibitz.chat itself doesn't sell a tier today — these
+        knobs exist so <em>you</em> (or an independent provider) can supply and bill TURN for your own
+        deployments. Free, direct P2P is always the default.
+      </div>
+
+      <h2>8 · Offline / same-Wi-Fi rooms <small>(no internet)</small></h2>
+      <p>
+        The same embedded engine also runs a room over a <strong>local network with no internet at all</strong> — a
+        plane, a cabin, an event with dead cell, an air-gapped office. One device on the Wi-Fi runs a tiny
+        <a href="/relay">open-source LAN hub</a>; everyone opens the link once and the call rides that LAN instead of the
+        internet broker. So <strong>a site that embeds Kibitz keeps working offline</strong> — same
+        <code>widget.js</code>, same rooms, no accounts and no cloud. (This is unrelated to the TURN <em>relay</em>:
+        TURN forwards an internet call's media when a direct path is blocked; the LAN hub replaces the internet entirely.)
+      </p>
+      <p>
+        The LAN hub is selected by a <code>?galaxy=…</code> link it hands out; the widget adopts and persists it (open it
+        once on the hub's Wi-Fi and that LAN works forever after — <code>?galaxy=off</code> clears it). Two things must
+        be reachable on the LAN for an embedded site: your <strong>page</strong> and <strong>widget.js</strong> — serve
+        them from the LAN-hub device, or rely on PWA caching (open the site once on real internet first, so it's cached).
+      </p>
+      <div class="note">
+        This is orthogonal to TURN above: TURN relays an <em>internet</em> call when NAT blocks a direct path; the LAN
+        relay replaces the internet entirely with a same-Wi-Fi rendezvous. Setup + downloads are on the
+        <a href="/relay">Offline mode page</a> (beta).
+      </div>
+
+      <h2>Specifications &amp; deep dives</h2>
+      <p>The engineering docs — how the room, the encryption, the admission gate and the agent layer actually work. Honest by design; this is the "show your work."</p>
+      <ul>
+        <li><a href="/docs/architecture">Architecture</a> — the room model, the three transport planes (signaling / E2E media / E2E data), the composable engine, edge infra. <strong>Start here.</strong></li>
+        <li><a href="/docs/verification">Verification &amp; admission</a> — who gets into a room: every method (open · OIDC identity · signed invites · name list · join code · email code) with the security analysis.</li>
+        <li><a href="/docs/cert-binding">Cert-binding</a> — serverless, peer-to-peer verified identity (the "Level 3" scheme): an OIDC token stapled to the live DTLS certificate, so it's non-replayable and needs no server.</li>
+        <li><a href="/docs/threat-model">Threat model</a> — what's protected and what isn't: the trust model, scope boundaries, admission attacks, the agent surface.</li>
+        <li><a href="/docs/agent-protocol">Agent protocol</a> — the agent wire/SDK protocol: perception/action envelopes over the data channel.</li>
+        <li><a href="/docs/agent-platform">Agent platform</a> — protocol → SDK → the three runtimes (Chromium / browserless Node / MCP server).</li>
+        <li><a href="/docs/offline-mode">Offline mode</a> — same-Wi-Fi rooms with no internet at all (the LAN hub).</li>
+      </ul>
+
+      <h2>See it live</h2>
+      <p>
+        Two working examples, same widget: <a href="/embed.html">embedded on a page</a> and
+        <a href="/embed-spa.html">in a single-page app</a> (where the call follows you through every tab — the
+        follow-me snippet above, in action). And the full headless build powers
+        <a href="https://whist.kibitz.chat">whist.kibitz.chat</a>.
+      </p>
+      <p>
+        Want a full app built on this engine? <a href="https://whist.kibitz.chat">whist.kibitz.chat</a> is a
+        multiplayer card game whose table video, presence and shared game state all ride this widget's headless
+        controller — it's open source as a reference design:
+        <a href="https://github.com/kibitz-chat/whist">github.com/kibitz-chat/whist</a>.
+      </p>
+
+      <nav>
+        <a href="/embed.html">Demo: on a page</a>
+        <a href="/embed-spa.html">Demo: SPA</a>
+        <a href="/docs/architecture">Architecture</a>
+        <a href="/docs/verification">Verification</a>
+        <a href="/docs/cert-binding">Cert-binding</a>
+        <a href="/docs/threat-model">Threat model</a>
+        <a href="/security">Security</a>
+        <a href="/relay">Offline mode</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/">← Back to Kibitz</a>
+      </nav>
+    </div>
+  </body>
+</html>
